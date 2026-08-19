@@ -293,7 +293,7 @@ func TestNewGitHubUpserter(t *testing.T) {
 func TestGitHubUpsert(t *testing.T) {
 	gh, err := NewGitHubUpserter(context.Background(), &transport.Endpoint{
 		Host: "github.com",
-		Path: "adevinta/maiao-tests",
+		Path: "runetes/maiao-tests",
 	})
 	if err != nil {
 		t.Skipf("Failed to initialise GitHub upserter, " +
@@ -303,16 +303,16 @@ func TestGitHubUpsert(t *testing.T) {
 	u := uuid.New().String()
 	head := "tests/go/upsert/" + u
 	t.Cleanup(func() {
-		gh.Git.DeleteRef(context.Background(), "adevinta", "maiao-tests", "refs/heads/"+head)
+		gh.Git.DeleteRef(context.Background(), "runetes", "maiao-tests", "refs/heads/"+head)
 	})
 
-	rc, _, err := gh.Repositories.GetCommit(context.Background(), "adevinta", "maiao-tests", "main", &github.ListOptions{})
+	rc, _, err := gh.Repositories.GetCommit(context.Background(), "runetes", "maiao-tests", "main", &github.ListOptions{})
 	require.NoError(t, err)
 
-	c, _, err := gh.Git.CreateCommit(context.Background(), "adevinta", "maiao-tests", &github.Commit{
+	c, _, err := gh.Git.CreateCommit(context.Background(), "runetes", "maiao-tests", &github.Commit{
 		Message: github.String("Test commit " + u),
 		Tree:    rc.Commit.Tree,
-		Parents: rc.Parents,
+		Parents: []*github.Commit{{SHA: rc.SHA}},
 	})
 	if err != nil {
 		if ghError, ok := err.(*github.ErrorResponse); ok {
@@ -324,7 +324,7 @@ func TestGitHubUpsert(t *testing.T) {
 	}
 	require.NoError(t, err)
 	require.NotNil(t, c)
-	_, _, err = gh.Git.CreateRef(context.Background(), "adevinta", "maiao-tests", &github.Reference{
+	_, _, err = gh.Git.CreateRef(context.Background(), "runetes", "maiao-tests", &github.Reference{
 		Ref: github.String("refs/heads/" + head),
 		Object: &github.GitObject{
 			SHA: c.SHA,
@@ -337,7 +337,7 @@ func TestGitHubUpsert(t *testing.T) {
 		id, err := strconv.Atoi(pr.ID)
 		require.NoError(t, err)
 		t.Cleanup(func() {
-			gh.PullRequests.Edit(context.Background(), "adevinta", "maiao-tests", id, &github.PullRequest{
+			gh.PullRequests.Edit(context.Background(), "runetes", "maiao-tests", id, &github.PullRequest{
 				State: github.String("Closed"),
 			})
 		})
