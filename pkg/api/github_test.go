@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"strconv"
@@ -18,7 +17,7 @@ import (
 	gh "github.com/adevinta/maiao/pkg/github"
 	"github.com/adevinta/maiao/pkg/log"
 	"github.com/go-git/go-git/v5/plumbing/transport"
-	"github.com/google/go-github/v55/github"
+	"github.com/google/go-github/v90/github"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -47,6 +46,11 @@ func setDefaultCredentials(getter credentials.CredentialGetter) {
 	gh.DefaultCredentialGetter = getter
 }
 
+func newTestClient(rt http.RoundTripper) *github.Client {
+	c, _ := github.NewClient(github.WithHTTPClient(&http.Client{Transport: rt}))
+	return c
+}
+
 func tempEnv(key, value string) func() {
 	old := os.Getenv(key)
 	os.Setenv(key, value)
@@ -60,9 +64,9 @@ func TestEnsureReturnsAnErrorWhenFailingToReachGithub(t *testing.T) {
 		http.DefaultTransport = transport
 	}(http.DefaultTransport)
 	g := GitHub{
-		Client: github.NewClient(&http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		Client: newTestClient(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
 			return nil, errors.New("not implemented")
-		})}),
+		})),
 	}
 	pr, _, err := g.Ensure(context.Background(), PullRequestOptions{Head: "some-ref"})
 	assert.Nil(t, pr)
@@ -76,7 +80,7 @@ func TestEnsureReturnsAnErrorWhenTooManyPRs(t *testing.T) {
 	g := GitHub{
 		Owner:      "test-owner",
 		Repository: "test-repository",
-		Client: github.NewClient(&http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		Client: newTestClient(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
 			responseReader := strings.NewReader(`[
 				{
 					"url": "https://api.github.com/repos/kubernetes/kubernetes/pulls/99491",
@@ -99,8 +103,8 @@ func TestEnsureReturnsAnErrorWhenTooManyPRs(t *testing.T) {
 					"number": 8435,
 				}
 				]`)
-			return &http.Response{StatusCode: http.StatusOK, Body: ioutil.NopCloser(responseReader)}, nil
-		})}),
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(responseReader)}, nil
+		})),
 	}
 	pr, _, err := g.Ensure(context.Background(), PullRequestOptions{Head: "some-ref"})
 	assert.Nil(t, pr)
@@ -114,7 +118,7 @@ func TestEnsureReturnsExisingPR(t *testing.T) {
 	g := GitHub{
 		Owner:      "test-owner",
 		Repository: "test-repository",
-		Client: github.NewClient(&http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		Client: newTestClient(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
 			fmt.Println(r.URL.String())
 			responseReader := strings.NewReader(`[
 				{
@@ -136,8 +140,8 @@ func TestEnsureReturnsExisingPR(t *testing.T) {
 					"active_lock_reason": null
 				}
 				]`)
-			return &http.Response{StatusCode: http.StatusOK, Body: ioutil.NopCloser(responseReader)}, nil
-		})}),
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(responseReader)}, nil
+		})),
 	}
 	pr, _, err := g.Ensure(context.Background(), PullRequestOptions{Head: "some-ref"})
 	assert.NoError(t, err)
@@ -153,7 +157,7 @@ func TestEnsureCreatesAndReturnsNewPRWhenNotExisting(t *testing.T) {
 	g := GitHub{
 		Owner:      "test-owner",
 		Repository: "test-repository",
-		Client: github.NewClient(&http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		Client: newTestClient(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
 			fmt.Println(r.URL.String())
 			switch r.URL.Path {
 			case "/repos/test-owner/test-repository/pulls":
@@ -161,7 +165,7 @@ func TestEnsureCreatesAndReturnsNewPRWhenNotExisting(t *testing.T) {
 				case http.MethodGet:
 					responseReader := strings.NewReader(`[
 					]`)
-					return &http.Response{StatusCode: http.StatusOK, Body: ioutil.NopCloser(responseReader)}, nil
+					return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(responseReader)}, nil
 				case http.MethodPost:
 					reader, writer := io.Pipe()
 					go func() {
@@ -170,14 +174,14 @@ func TestEnsureCreatesAndReturnsNewPRWhenNotExisting(t *testing.T) {
 							HTMLURL: github.String("https://github.com/repos/test-owner/pull/12345"),
 						}))
 					}()
-					return &http.Response{StatusCode: http.StatusOK, Body: ioutil.NopCloser(reader)}, nil
+					return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(reader)}, nil
 				default:
 					return nil, fmt.Errorf("unexpected %s to url '%s'", r.Method, r.URL.String())
 				}
 			default:
 				return nil, fmt.Errorf("unexpected %s to url '%s'", r.Method, r.URL.String())
 			}
-		})}),
+		})),
 	}
 	pr, _, err := g.Ensure(context.Background(), PullRequestOptions{Head: "some-ref"})
 	assert.NoError(t, err)
@@ -235,7 +239,7 @@ func TestNewGitHubUpserter(t *testing.T) {
 			b := bytes.Buffer{}
 			resp := &http.Response{
 				StatusCode: http.StatusOK,
-				Body:       ioutil.NopCloser(&b),
+				Body:       io.NopCloser(&b),
 			}
 			return resp, json.NewEncoder(&b).Encode(github.Repository{
 				Owner: &github.User{
@@ -272,7 +276,7 @@ func TestNewGitHubUpserter(t *testing.T) {
 			b := bytes.Buffer{}
 			resp := &http.Response{
 				StatusCode: http.StatusOK,
-				Body:       ioutil.NopCloser(&b),
+				Body:       io.NopCloser(&b),
 			}
 			return resp, json.NewEncoder(&b).Encode(github.Repository{
 				Owner: &github.User{
@@ -284,7 +288,7 @@ func TestNewGitHubUpserter(t *testing.T) {
 		g, err := NewGitHubUpserter(context.Background(), &transport.Endpoint{Host: "github.com", Path: "org/repo"})
 		assert.NoError(t, err)
 		require.NotNil(t, g)
-		assert.Equal(t, "api.github.com", g.Client.BaseURL.Host)
+		assert.Equal(t, "https://api.github.com/", g.Client.BaseURL())
 		assert.Equal(t, "github-owner-login", g.Owner)
 		assert.Equal(t, "github-repo-name", g.Repository)
 	})
@@ -309,11 +313,11 @@ func TestGitHubUpsert(t *testing.T) {
 	rc, _, err := gh.Repositories.GetCommit(context.Background(), "runetes", "maiao-tests", "main", &github.ListOptions{})
 	require.NoError(t, err)
 
-	c, _, err := gh.Git.CreateCommit(context.Background(), "runetes", "maiao-tests", &github.Commit{
+	c, _, err := gh.Git.CreateCommit(context.Background(), "runetes", "maiao-tests", github.Commit{
 		Message: github.String("Test commit " + u),
 		Tree:    rc.Commit.Tree,
 		Parents: []*github.Commit{{SHA: rc.SHA}},
-	})
+	}, nil)
 	if err != nil {
 		if ghError, ok := err.(*github.ErrorResponse); ok {
 			if ghError.Response.StatusCode == http.StatusForbidden {
@@ -324,11 +328,9 @@ func TestGitHubUpsert(t *testing.T) {
 	}
 	require.NoError(t, err)
 	require.NotNil(t, c)
-	_, _, err = gh.Git.CreateRef(context.Background(), "runetes", "maiao-tests", &github.Reference{
-		Ref: github.String("refs/heads/" + head),
-		Object: &github.GitObject{
-			SHA: c.SHA,
-		},
+	_, _, err = gh.Git.CreateRef(context.Background(), "runetes", "maiao-tests", github.CreateRef{
+		Ref: "refs/heads/" + head,
+		SHA: c.GetSHA(),
 	})
 	require.NoError(t, err)
 	pr, created, err := gh.Ensure(context.Background(), PullRequestOptions{Base: "main", Head: head, Title: "test-" + u})
