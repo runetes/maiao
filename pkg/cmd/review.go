@@ -49,5 +49,20 @@ func review(cmd *cobra.Command, args []string) error {
 		Branch:         branch,
 		WorkInProgress: cmd.Flag("work-in-progress").Value.String() != "false",
 		Ready:          cmd.Flag("ready").Value.String() != "false",
+		Stack:          stackOption(repo),
 	})
+}
+
+func stackOption(repo *git.Repository) string {
+	cfg, err := repo.Config()
+	if err != nil || cfg.Raw == nil {
+		return "auto"
+	}
+	v := cfg.Raw.Section("maiao").Option("useNativeStack")
+	switch v {
+	case "true", "false":
+		return v
+	default:
+		return "auto"
+	}
 }

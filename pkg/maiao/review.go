@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/adevinta/maiao/pkg/api"
@@ -31,6 +32,7 @@ type ReviewOptions struct {
 	Topic          string
 	WorkInProgress bool
 	Ready          bool
+	Stack          string
 }
 
 type change struct {
@@ -287,7 +289,50 @@ func sendPrs(ctx context.Context, repo lgit.Repository, options ReviewOptions, b
 		}
 		log.ForContext(ctx).WithFields(logrus.Fields{"prOptions": opts, "change": change}).Trace("PR has been updated with parent ")
 	}
+
+	if len(changes) > 1 {
+		registerNativeStack(ctx, prAPI, options, changes)
+	}
+
 	return nil
+}
+
+func registerNativeStack(ctx context.Context, prAPI api.PullRequester, options ReviewOptions, changes []*change) {
+	if options.Stack == "false" {
+		return
+	}
+
+	stackMgr := prAPI.StackManager()
+	if stackMgr == nil {
+		if options.Stack == "true" {
+			log.ForContext(ctx).Warn("native stacks requested but not supported by this GitHub instance")
+		}
+		return
+	}
+
+	if !stackMgr.Available(ctx) {
+		if options.Stack == "true" {
+			log.ForContext(ctx).Warn("native stacks requested but not available on this GitHub instance")
+		}
+		return
+	}
+
+	prNumbers := make([]int, 0, len(changes))
+	for _, change := range changes {
+		id, err := strconv.Atoi(change.pr.ID)
+		if err != nil {
+			log.ForContext(ctx).WithError(err).Warn("failed to parse PR number for stack registration")
+			return
+		}
+		prNumbers = append(prNumbers, id)
+	}
+
+	stack, err := stackMgr.CreateOrUpdateStack(ctx, prNumbers)
+	if err != nil {
+		log.ForContext(ctx).WithError(err).Warn("failed to register native stack")
+		return
+	}
+	log.ForContext(ctx).WithField("stackID", stack.ID).WithField("prCount", len(stack.PRs)).Debug("registered native stack")
 }
 
 func defaultBranchOption(ctx context.Context, repo lgit.Repository, prAPI api.PullRequester, options *ReviewOptions) {
