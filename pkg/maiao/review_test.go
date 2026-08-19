@@ -143,6 +143,10 @@ func (a *testAPI) DefaultBranch(ctx context.Context) string {
 	return "DefaultBranch not implemented"
 }
 
+func (a *testAPI) StackManager() api.StackManager {
+	return nil
+}
+
 func TestDefaultOptionsUsesGitDefaults(t *testing.T) {
 	opts := ReviewOptions{}
 	repo := &testRepository{}
@@ -538,6 +542,98 @@ type nopWriteCloser struct {
 
 func (n *nopWriteCloser) Close() error {
 	return nil
+}
+
+type mockStackManager struct {
+	available            bool
+	createOrUpdateCalled int
+	lastPRNumbers        []int
+	stack                *api.Stack
+	err                  error
+}
+
+func (m *mockStackManager) Available(_ context.Context) bool {
+	return m.available
+}
+
+func (m *mockStackManager) CreateOrUpdateStack(_ context.Context, prNumbers []int) (*api.Stack, error) {
+	m.createOrUpdateCalled++
+	m.lastPRNumbers = prNumbers
+	return m.stack, m.err
+}
+
+func (m *mockStackManager) GetStack(_ context.Context, _ int) (*api.Stack, error) {
+	return m.stack, m.err
+}
+
+type testAPIWithStack struct {
+	testAPI
+	stackMgr api.StackManager
+}
+
+func (a *testAPIWithStack) StackManager() api.StackManager {
+	return a.stackMgr
+}
+
+func TestRegisterNativeStack_SkippedWhenStackFalse(t *testing.T) {
+	mgr := &mockStackManager{available: true, stack: &api.Stack{ID: "1", PRs: []int{1, 2}}}
+	prAPI := &testAPIWithStack{stackMgr: mgr}
+	changes := []*change{
+		{pr: &api.PullRequest{ID: "1"}},
+		{pr: &api.PullRequest{ID: "2"}},
+	}
+	registerNativeStack(context.Background(), prAPI, ReviewOptions{Stack: "false"}, changes)
+	assert.Equal(t, 0, mgr.createOrUpdateCalled)
+}
+
+func TestRegisterNativeStack_SkippedWhenNotAvailableAndAuto(t *testing.T) {
+	mgr := &mockStackManager{available: false}
+	prAPI := &testAPIWithStack{stackMgr: mgr}
+	changes := []*change{
+		{pr: &api.PullRequest{ID: "1"}},
+		{pr: &api.PullRequest{ID: "2"}},
+	}
+	registerNativeStack(context.Background(), prAPI, ReviewOptions{Stack: "auto"}, changes)
+	assert.Equal(t, 0, mgr.createOrUpdateCalled)
+}
+
+func TestRegisterNativeStack_CallsCreateOrUpdateWhenAvailable(t *testing.T) {
+	mgr := &mockStackManager{
+		available: true,
+		stack:     &api.Stack{ID: "42", PRs: []int{10, 20, 30}},
+	}
+	prAPI := &testAPIWithStack{stackMgr: mgr}
+	changes := []*change{
+		{pr: &api.PullRequest{ID: "10"}},
+		{pr: &api.PullRequest{ID: "20"}},
+		{pr: &api.PullRequest{ID: "30"}},
+	}
+	registerNativeStack(context.Background(), prAPI, ReviewOptions{Stack: "auto"}, changes)
+	assert.Equal(t, 1, mgr.createOrUpdateCalled)
+	assert.Equal(t, []int{10, 20, 30}, mgr.lastPRNumbers)
+}
+
+func TestRegisterNativeStack_GracefulOnError(t *testing.T) {
+	mgr := &mockStackManager{
+		available: true,
+		err:       errors.New("API error"),
+	}
+	prAPI := &testAPIWithStack{stackMgr: mgr}
+	changes := []*change{
+		{pr: &api.PullRequest{ID: "1"}},
+		{pr: &api.PullRequest{ID: "2"}},
+	}
+	registerNativeStack(context.Background(), prAPI, ReviewOptions{Stack: "true"}, changes)
+	assert.Equal(t, 1, mgr.createOrUpdateCalled)
+}
+
+func TestRegisterNativeStack_NilStackManagerWithAutoIsNoop(t *testing.T) {
+	prAPI := &testAPI{}
+	changes := []*change{
+		{pr: &api.PullRequest{ID: "1"}},
+		{pr: &api.PullRequest{ID: "2"}},
+	}
+	registerNativeStack(context.Background(), prAPI, ReviewOptions{Stack: "auto"}, changes)
 }
 
 func init() {
