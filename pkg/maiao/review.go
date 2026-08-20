@@ -31,6 +31,7 @@ type ReviewOptions struct {
 	Topic          string
 	WorkInProgress bool
 	Ready          bool
+	Stack          string
 }
 
 type change struct {
