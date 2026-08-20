@@ -4,11 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/url"
 
 	"github.com/adevinta/maiao/pkg/log"
 	"github.com/cli/go-gh/v2/pkg/api"
-	"github.com/google/go-github/v55/github"
+	"github.com/google/go-github/v90/github"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
 )
@@ -56,22 +55,18 @@ func NewGraphQLClient(httpClient *http.Client, domain string) (*api.GraphQLClien
 // Credentials are even taken from GITHUB_TOKEN environment variable or
 // from your ~/.netrc file
 func NewClient(httpClient *http.Client, domain string) (*github.Client, error) {
-	c := github.NewClient(httpClient)
+	opts := []github.ClientOptionsFunc{
+		github.WithHTTPClient(httpClient),
+	}
 	switch domain {
 	case "github.com", "api.github.com":
 	default:
-		GitHubURL := url.URL{
-			Scheme: "https",
-			Host:   GitHubAPIDomain(domain),
-			Path:   "/api/v3/",
-		}
-		GitHubUploadURL := GitHubURL
-		GitHubUploadURL.Path = "/api/v3/upload/"
-		c.BaseURL = &GitHubURL
-		// TODO: confirm from https://github.com/goreleaser/goreleaser/issues/365#issuecomment-331655225
-		c.UploadURL = &GitHubUploadURL
+		apiDomain := GitHubAPIDomain(domain)
+		baseURL := "https://" + apiDomain + "/api/v3/"
+		uploadURL := "https://" + apiDomain + "/api/v3/upload/"
+		opts = append(opts, github.WithEnterpriseURLs(baseURL, uploadURL))
 	}
-	return c, nil
+	return github.NewClient(opts...)
 }
 
 func getGithubToken(domain string) (string, error) {
