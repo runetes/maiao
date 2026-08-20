@@ -1,12 +1,11 @@
 name: release
 
 on:
-  push:
-    tags:
-    - '*'
-    branches-ignore:
-    - '*'
-    - '**/*'
+  release:
+    types: [published]
+
+permissions:
+  contents: write
 
 jobs:
 
@@ -25,3 +24,29 @@ jobs:
       with:
         files: |
           git-review*
+
+  update-formula:
+    runs-on: ubuntu-latest
+    needs: publish
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: main
+        fetch-tags: true
+    - name: Update Homebrew formula
+      env:
+        TAG: ${{ github.event.release.tag_name }}
+      run: |
+        VERSION="${TAG#v}"
+        REVISION="$(git rev-parse "${TAG}")"
+        sed -i "s/tag:.*$/tag:      \"${VERSION}\",/" HomebrewFormula/maiao.rb
+        sed -i "s/revision:.*$/revision: \"${REVISION}\"/" HomebrewFormula/maiao.rb
+    - name: Commit and push
+      env:
+        TAG: ${{ github.event.release.tag_name }}
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add HomebrewFormula/maiao.rb
+        git commit -m "chore: update Homebrew formula to ${TAG} [skip ci]"
+        git push
