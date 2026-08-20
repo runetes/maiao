@@ -12,7 +12,7 @@ import (
 	"github.com/adevinta/maiao/pkg/log"
 	"github.com/cli/go-gh/v2/pkg/api"
 	"github.com/go-git/go-git/v5/plumbing/transport"
-	"github.com/google/go-github/v55/github"
+	"github.com/google/go-github/v90/github"
 	"github.com/shurcooL/githubv4"
 	"github.com/sirupsen/logrus"
 )
@@ -63,11 +63,11 @@ func (g *GitHub) Ensure(ctx context.Context, options PullRequestOptions) (*PullR
 	}
 	switch len(prs) {
 	case 0:
-		newPROptions := &github.NewPullRequest{
+		newPROptions := github.CreatePullRequest{
 			Title: github.String(options.Title),
 			Body:  github.String(options.Body),
-			Base:  github.String(options.Base),
-			Head:  github.String(options.Head),
+			Base:  options.Base,
+			Head:  options.Head,
 		}
 		if options.WIP {
 			log.ForContext(ctx).Info("adding draft marker")
