@@ -14,13 +14,23 @@ Before installing Maiao, ensure you have:
 ### Homebrew (macOS/Linux)
 
 ```bash
-brew tap adevinta/maiao https://github.com/adevinta/maiao.git
+brew tap runetes/maiao https://github.com/runetes/maiao.git
 brew install maiao
+```
+
+#### Migrating from adevinta/maiao
+
+If you previously installed maiao via `brew tap adevinta/maiao`, run:
+
+```bash
+brew untap adevinta/maiao
+brew tap runetes/maiao https://github.com/runetes/maiao.git
+brew reinstall maiao
 ```
 
 ### Binary Installation (Unix/Linux/macOS)
 
-1. Visit the [releases page](https://github.com/adevinta/maiao/releases)
+1. Visit the [releases page](https://github.com/runetes/maiao/releases)
 2. Download the appropriate binary for your system
 3. Install it:
 
@@ -35,7 +45,7 @@ xattr -d com.apple.quarantine /usr/local/bin/git-review
 
 ### Windows
 
-1. Visit the [releases page](https://github.com/adevinta/maiao/releases)
+1. Visit the [releases page](https://github.com/runetes/maiao/releases)
 2. Download `git-review-windows-<arch>` (usually `amd64`)
 3. Add to your PATH
 
@@ -252,14 +262,14 @@ Maiao groups all fixups by their target commit and updates PRs accordingly.
 To install maiao with homebrew, you need to tap the repo before installing it:
 
 ```bash
-brew tap adevinta/maiao https://github.com/adevinta/maiao.git
+brew tap runetes/maiao https://github.com/runetes/maiao.git
 brew install maiao
 ```
 
 ### Unix users
 
 The simplest way to install maiao is to download the binary from github. To do so, visit
-the [releases](https://github.com/adevinta/maiao/releases) page and download the version you want to install. Then run
+the [releases](https://github.com/runetes/maiao/releases) page and download the version you want to install. Then run
 
 ```
 mv <downloadsDir>/git-review-`uname -s`-`uname -m` /usr/local/bin/git-review
@@ -273,7 +283,7 @@ To build a standalone binary, you will need to run `go build -o /usr/local/bin/g
 
 ### Windows users
 
-The relevant Windows binary can be downloaded in the [releases](https://github.com/adevinta/maiao/releases) page
+The relevant Windows binary can be downloaded in the [releases](https://github.com/runetes/maiao/releases) page
 
 Download the `git-review-windows-<arch>` where `<arch>` is the architecture of your machine. If you are unsure, usually,
 amd64 is the default windows architecture.
@@ -300,7 +310,7 @@ To enable it, ensure you export the `MAIAO_EXPERIMENTAL_CREDENTIALS=true` enviro
 Maiao will then use your system keyring like [macOS keychain](https://support.apple.com/en-au/guide/keychain-access/welcome/mac) or [pass](https://www.passwordstore.org/)
 to store GitHub API keys.
 
-We will be happy to receive your feedback about this feature in [maiao's issues](https://github.com/adevinta/maiao/issues) 
+We will be happy to receive your feedback about this feature in [maiao's issues](https://github.com/runetes/maiao/issues) 
 
 
 Your environment is then ready to run maiao.
@@ -504,5 +514,5 @@ Don't amend commits directly; use fixups:
 ## 📚 Next Steps
 
 - **[How Does It Work](how-does-it-work.md)** - Deep dive into technical details
-- **[GitHub Issues](https://github.com/adevinta/maiao/issues)** - Report bugs or request features
+- **[GitHub Issues](https://github.com/runetes/maiao/issues)** - Report bugs or request features
 - **[Contributing](../CONTRIBUTING.md)** - Contribute to Maiao

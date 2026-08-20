@@ -553,4 +553,4 @@ Change-IDs persist across:
 
 - **[Getting Started](getting-started.md)** - Installation and basic usage
 - **[Source Code](../pkg/maiao/review.go)** - Core implementation
-- **[GitHub Issues](https://github.com/adevinta/maiao/issues)** - Report bugs or request features
+- **[GitHub Issues](https://github.com/runetes/maiao/issues)** - Report bugs or request features

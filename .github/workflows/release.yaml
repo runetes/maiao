@@ -11,7 +11,7 @@ on:
 jobs:
 
   call-build:
-    uses: adevinta/maiao/.github/workflows/go.yml@main
+    uses: runetes/maiao/.github/workflows/go.yml@main
 
   publish:
     runs-on: ubuntu-latest
