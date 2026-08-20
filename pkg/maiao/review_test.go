@@ -9,8 +9,10 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/adevinta/maiao/pkg/api"
 	"github.com/adevinta/maiao/pkg/log"
@@ -141,6 +143,10 @@ func (a *testAPI) DefaultBranch(ctx context.Context) string {
 		return a.DefaultBranchFunc(ctx)
 	}
 	return "DefaultBranch not implemented"
+}
+
+func (a *testAPI) StackManager() api.StackManager {
+	return nil
 }
 
 func TestDefaultOptionsUsesGitDefaults(t *testing.T) {
@@ -538,6 +544,154 @@ type nopWriteCloser struct {
 
 func (n *nopWriteCloser) Close() error {
 	return nil
+}
+
+type testStackManager struct {
+	available            func(context.Context) bool
+	createOrUpdateStack  func(context.Context, []int) (*api.Stack, error)
+	getStack             func(context.Context, int) (*api.Stack, error)
+	createOrUpdateCalled int
+	lastPRNumbers        []int
+}
+
+func (m *testStackManager) Available(ctx context.Context) bool {
+	if m.available == nil {
+		return false
+	}
+	return m.available(ctx)
+}
+
+func (m *testStackManager) CreateOrUpdateStack(ctx context.Context, prNumbers []int) (*api.Stack, error) {
+	m.createOrUpdateCalled++
+	m.lastPRNumbers = prNumbers
+	if m.createOrUpdateStack == nil {
+		return nil, errors.New("CreateOrUpdateStack not implemented")
+	}
+	return m.createOrUpdateStack(ctx, prNumbers)
+}
+
+func (m *testStackManager) GetStack(ctx context.Context, prNumber int) (*api.Stack, error) {
+	if m.getStack == nil {
+		return nil, errors.New("GetStack not implemented")
+	}
+	return m.getStack(ctx, prNumber)
+}
+
+type testAPIWithStack struct {
+	testAPI
+	stackMgr api.StackManager
+}
+
+func (a *testAPIWithStack) StackManager() api.StackManager {
+	return a.stackMgr
+}
+
+func stackTestRepo(t *testing.T) string {
+	t.Helper()
+	d, err := os.MkdirTemp("", "stack-test-*")
+	require.NoError(t, err)
+	t.Cleanup(func() { os.RemoveAll(d) })
+	gitCommand(t, d, "init")
+	gitCommand(t, d, "config", "user.email", "test@test.com")
+	gitCommand(t, d, "config", "user.name", "Test")
+	gitCommand(t, d, "commit", "--allow-empty", "-m", "init")
+	return d
+}
+
+func TestRegisterNativeStack_SkippedWhenStackFalse(t *testing.T) {
+	mgr := &testStackManager{
+		available: func(context.Context) bool { return true },
+		createOrUpdateStack: func(_ context.Context, _ []int) (*api.Stack, error) {
+			return &api.Stack{ID: "1", PRs: []int{1, 2}}, nil
+		},
+	}
+	prAPI := &testAPIWithStack{stackMgr: mgr}
+	changes := []*change{
+		{pr: &api.PullRequest{ID: "1"}},
+		{pr: &api.PullRequest{ID: "2"}},
+	}
+	registerNativeStack(context.Background(), prAPI, ReviewOptions{Stack: "false", RepoPath: stackTestRepo(t)}, changes)
+	assert.Equal(t, 0, mgr.createOrUpdateCalled)
+}
+
+func TestRegisterNativeStack_SkippedWhenNotAvailableAndAuto(t *testing.T) {
+	mgr := &testStackManager{
+		available: func(context.Context) bool { return false },
+	}
+	prAPI := &testAPIWithStack{stackMgr: mgr}
+	changes := []*change{
+		{pr: &api.PullRequest{ID: "1"}},
+		{pr: &api.PullRequest{ID: "2"}},
+	}
+	registerNativeStack(context.Background(), prAPI, ReviewOptions{Stack: "auto", RepoPath: stackTestRepo(t)}, changes)
+	assert.Equal(t, 0, mgr.createOrUpdateCalled)
+}
+
+func TestRegisterNativeStack_CallsCreateOrUpdateWhenAvailable(t *testing.T) {
+	mgr := &testStackManager{
+		available: func(context.Context) bool { return true },
+		createOrUpdateStack: func(_ context.Context, _ []int) (*api.Stack, error) {
+			return &api.Stack{ID: "42", PRs: []int{10, 20, 30}}, nil
+		},
+	}
+	prAPI := &testAPIWithStack{stackMgr: mgr}
+	changes := []*change{
+		{pr: &api.PullRequest{ID: "10"}},
+		{pr: &api.PullRequest{ID: "20"}},
+		{pr: &api.PullRequest{ID: "30"}},
+	}
+	registerNativeStack(context.Background(), prAPI, ReviewOptions{Stack: "auto", RepoPath: stackTestRepo(t)}, changes)
+	assert.Equal(t, 1, mgr.createOrUpdateCalled)
+	assert.Equal(t, []int{10, 20, 30}, mgr.lastPRNumbers)
+}
+
+func TestRegisterNativeStack_GracefulOnError(t *testing.T) {
+	mgr := &testStackManager{
+		available: func(context.Context) bool { return true },
+		createOrUpdateStack: func(_ context.Context, _ []int) (*api.Stack, error) {
+			return nil, errors.New("API error")
+		},
+	}
+	prAPI := &testAPIWithStack{stackMgr: mgr}
+	changes := []*change{
+		{pr: &api.PullRequest{ID: "1"}},
+		{pr: &api.PullRequest{ID: "2"}},
+	}
+	registerNativeStack(context.Background(), prAPI, ReviewOptions{Stack: "true", RepoPath: stackTestRepo(t)}, changes)
+	assert.Equal(t, 1, mgr.createOrUpdateCalled)
+}
+
+func TestRegisterNativeStack_NilStackManagerWithAutoIsNoop(t *testing.T) {
+	prAPI := &testAPI{}
+	changes := []*change{
+		{pr: &api.PullRequest{ID: "1"}},
+		{pr: &api.PullRequest{ID: "2"}},
+	}
+	registerNativeStack(context.Background(), prAPI, ReviewOptions{Stack: "auto", RepoPath: stackTestRepo(t)}, changes)
+}
+
+func TestRegisterNativeStack_UsesCachedAvailability(t *testing.T) {
+	d := stackTestRepo(t)
+	gitCommand(t, d, "config", "maiao.stackApiAvailable", "true")
+	gitCommand(t, d, "config", "maiao.stackApiCheckedAt", strconv.FormatInt(time.Now().Unix(), 10))
+
+	availableCalled := false
+	mgr := &testStackManager{
+		available: func(context.Context) bool {
+			availableCalled = true
+			return true
+		},
+		createOrUpdateStack: func(_ context.Context, _ []int) (*api.Stack, error) {
+			return &api.Stack{ID: "1", PRs: []int{1}}, nil
+		},
+	}
+	prAPI := &testAPIWithStack{stackMgr: mgr}
+	changes := []*change{
+		{pr: &api.PullRequest{ID: "1"}},
+	}
+	registerNativeStack(context.Background(), prAPI, ReviewOptions{Stack: "auto", RepoPath: d}, changes)
+	assert.False(t, availableCalled, "should use cached value, not call Available()")
+	assert.Equal(t, 1, mgr.createOrUpdateCalled)
 }
 
 func init() {

@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os/exec"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/adevinta/maiao/pkg/api"
 	"github.com/adevinta/maiao/pkg/credentials"
@@ -288,7 +291,108 @@ func sendPrs(ctx context.Context, repo lgit.Repository, options ReviewOptions, b
 		}
 		log.ForContext(ctx).WithFields(logrus.Fields{"prOptions": opts, "change": change}).Trace("PR has been updated with parent ")
 	}
+
+	if len(changes) > 1 {
+		registerNativeStack(ctx, prAPI, options, changes)
+	}
+
 	return nil
+}
+
+func registerNativeStack(ctx context.Context, prAPI api.PullRequester, options ReviewOptions, changes []*change) {
+	if options.Stack == "false" {
+		return
+	}
+
+	stackMgr := prAPI.StackManager()
+	if stackMgr == nil {
+		if options.Stack == "true" {
+			log.ForContext(ctx).Warn("native stacks requested but not supported by this GitHub instance")
+		}
+		return
+	}
+
+	if !stackAvailable(ctx, stackMgr, options, options.RepoPath) {
+		return
+	}
+
+	prNumbers := make([]int, 0, len(changes))
+	for _, change := range changes {
+		id, err := strconv.Atoi(change.pr.ID)
+		if err != nil {
+			log.ForContext(ctx).WithError(err).Warn("failed to parse PR number for stack registration")
+			return
+		}
+		prNumbers = append(prNumbers, id)
+	}
+
+	stack, err := stackMgr.CreateOrUpdateStack(ctx, prNumbers)
+	if err != nil {
+		log.ForContext(ctx).WithError(err).Warn("failed to register native stack")
+		return
+	}
+	log.ForContext(ctx).WithField("stackID", stack.ID).WithField("prCount", len(stack.PRs)).Debug("registered native stack")
+}
+
+const stackCacheTTL = 24 * time.Hour
+
+func stackAvailable(ctx context.Context, stackMgr api.StackManager, options ReviewOptions, repoPath string) bool {
+	cached, cachedAt := readStackAvailabilityCache(repoPath)
+	if cachedAt != nil && time.Since(*cachedAt) < stackCacheTTL {
+		log.ForContext(ctx).Debug("using cached stack API availability")
+		return cached
+	}
+
+	available := stackMgr.Available(ctx)
+	writeStackAvailabilityCache(repoPath, available)
+
+	if !available && options.Stack == "true" {
+		log.ForContext(ctx).Warn("native stacks requested but not available on this GitHub instance")
+	}
+	return available
+}
+
+func readStackAvailabilityCache(repoPath string) (available bool, checkedAt *time.Time) {
+	cmd := exec.Command("git", "config", "--local", "maiao.stackApiCheckedAt")
+	if repoPath != "" {
+		cmd.Dir = repoPath
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		return false, nil
+	}
+	ts, err := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64)
+	if err != nil {
+		return false, nil
+	}
+	t := time.Unix(ts, 0)
+
+	cmd = exec.Command("git", "config", "--local", "maiao.stackApiAvailable")
+	if repoPath != "" {
+		cmd.Dir = repoPath
+	}
+	out, err = cmd.Output()
+	if err != nil {
+		return false, nil
+	}
+	return strings.TrimSpace(string(out)) == "true", &t
+}
+
+func writeStackAvailabilityCache(repoPath string, available bool) {
+	val := "false"
+	if available {
+		val = "true"
+	}
+	cmd := exec.Command("git", "config", "--local", "maiao.stackApiAvailable", val)
+	if repoPath != "" {
+		cmd.Dir = repoPath
+	}
+	cmd.Run()
+	cmd = exec.Command("git", "config", "--local", "maiao.stackApiCheckedAt", strconv.FormatInt(time.Now().Unix(), 10))
+	if repoPath != "" {
+		cmd.Dir = repoPath
+	}
+	cmd.Run()
 }
 
 func defaultBranchOption(ctx context.Context, repo lgit.Repository, prAPI api.PullRequester, options *ReviewOptions) {

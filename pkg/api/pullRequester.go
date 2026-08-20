@@ -18,6 +18,8 @@ type PullRequester interface {
 	Ensure(context.Context, PullRequestOptions) (*PullRequest, bool, error)
 	LinkedTopicIssues(topicSearchString string) string
 	DefaultBranch(context.Context) string
+	// StackManager returns the stack manager if native stacks are supported, or nil.
+	StackManager() StackManager
 }
 
 // PullRequestOptions are the options available to create or update a pull request

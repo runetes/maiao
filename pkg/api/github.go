@@ -21,9 +21,10 @@ import (
 type GitHub struct {
 	GraphQLClient *api.GraphQLClient
 	*github.Client
-	Host       string
-	Owner      string
-	Repository string
+	Host         string
+	Owner        string
+	Repository   string
+	stackManager *GitHubStackManager
 }
 
 // RepoName implements the ghrepo.Interface interface required to call the github graphql API from https://github.com/cli/cli
@@ -168,6 +169,11 @@ func (g *GitHub) DefaultBranch(ctx context.Context) string {
 	return repo.GetDefaultBranch()
 }
 
+// StackManager returns the GitHub native stack manager.
+func (g *GitHub) StackManager() StackManager {
+	return g.stackManager
+}
+
 // LinkedTopicIssues returns the search URL for linked issues
 func (g *GitHub) LinkedTopicIssues(topicSearchString string) string {
 	values := url.Values{}
@@ -216,6 +222,7 @@ func NewGitHubUpserter(ctx context.Context, endpoint *transport.Endpoint) (*GitH
 		Repository:    repo.GetName(),
 		Client:        client,
 		GraphQLClient: graphQLClient,
+		stackManager:  NewGitHubStackManager(client, repo.GetOwner().GetLogin(), repo.GetName()),
 	}
 	log.ForContext(ctx).Trace("initialized github client")
 	return gh, nil
