@@ -95,6 +95,38 @@ func TestPrOptionsTitleStripsWIPBeforeNeedPrefix(t *testing.T) {
 	assert.True(t, opts.WIP)
 }
 
+func TestPrOptionsWIPDetectedFromTitlePrefix(t *testing.T) {
+	prAPI := &linkedTopicIssuesFunc{
+		linkedTopicIssuesFunc: func(s string) string { return "" },
+	}
+	repo := &testRepository{}
+
+	childChange := &change{
+		message: &lgit.Message{Title: "WIP: My Feature", Body: "description"},
+		branch:  "maiao.child",
+	}
+
+	opts := prOptions(repo, prAPI, ReviewOptions{Branch: "main", WorkInProgress: false}, childChange, []*change{}, []*change{})
+	assert.Equal(t, "My Feature", opts.Title)
+	assert.True(t, opts.WIP, "WIP should be true when commit title starts with 'WIP: '")
+}
+
+func TestPrOptionsDraftDetectedFromTitlePrefix(t *testing.T) {
+	prAPI := &linkedTopicIssuesFunc{
+		linkedTopicIssuesFunc: func(s string) string { return "" },
+	}
+	repo := &testRepository{}
+
+	childChange := &change{
+		message: &lgit.Message{Title: "Draft: My Feature", Body: "description"},
+		branch:  "maiao.child",
+	}
+
+	opts := prOptions(repo, prAPI, ReviewOptions{Branch: "main", WorkInProgress: false}, childChange, []*change{}, []*change{})
+	assert.Equal(t, "My Feature", opts.Title)
+	assert.True(t, opts.WIP, "WIP should be true when commit title starts with 'Draft: '")
+}
+
 func TestPrOptionsTitleStripsDraftBeforeNeedPrefix(t *testing.T) {
 	prAPI := &linkedTopicIssuesFunc{
 		linkedTopicIssuesFunc: func(s string) string { return "" },
@@ -114,6 +146,7 @@ func TestPrOptionsTitleStripsDraftBeforeNeedPrefix(t *testing.T) {
 
 	opts := prOptions(repo, prAPI, ReviewOptions{Branch: "main"}, childChange, []*change{parentChange}, []*change{})
 	assert.Equal(t, "[need #3] My Feature", opts.Title)
+	assert.True(t, opts.WIP, "WIP should be true when commit title starts with 'Draft: '")
 }
 
 func TestPrOptionsTitleWithoutPrefixUnchanged(t *testing.T) {
