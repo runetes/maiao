@@ -18,12 +18,13 @@ type PullRequester interface {
 
 // PullRequestOptions are the options available to create or update a pull request
 type PullRequestOptions struct {
-	Base  string
-	Head  string
-	Title string
-	Body  string
-	WIP   bool
-	Ready bool
+	Base             string
+	Head             string
+	Title            string
+	Body             string
+	WIP              bool
+	Ready            bool
+	ParentPullNumber string
 }
 
 // PullRequest defines the object

@@ -59,6 +59,7 @@ func promptForProvider(host string) (Type, error) {
 		string(Gitea),
 		string(Forgejo),
 		string(Bitbucket),
+		string(Origin),
 	}
 	label := fmt.Sprintf("Detected remote host: %s. Which provider is this?", host)
 	idx, err := prompt.Select(label, items)

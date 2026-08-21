@@ -15,6 +15,7 @@ var envVarForProvider = map[string]providerEnvConfig{
 	"gitea":     {passwordKey: "GITEA_TOKEN"},
 	"forgejo":   {passwordKey: "FORGEJO_TOKEN"},
 	"bitbucket": {passwordKey: "BITBUCKET_TOKEN", usernameKey: "BITBUCKET_USERNAME"},
+	"origin":    {passwordKey: "ORIGIN_TOKEN"},
 }
 
 func CredentialGetterForProvider(providerType string) CredentialGetter {
