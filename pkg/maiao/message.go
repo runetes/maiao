@@ -33,7 +33,7 @@ func changeDetails(f api.BodyFormatter, changes []*change) []string {
 	for _, change := range changes {
 		t := change.message.Title
 		if change.pr != nil {
-			t = fmt.Sprintf("%s (#%s)", t, change.pr.ID)
+			t = fmt.Sprintf("%s (%s)", t, f.Link(change.pr.URL, "#"+change.pr.ID))
 		}
 		r = append(r, f.Section(t, []string{change.message.Body})...)
 	}
