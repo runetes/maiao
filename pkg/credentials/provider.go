@@ -4,22 +4,27 @@ import (
 	"github.com/99designs/keyring"
 )
 
-var envVarForProvider = map[string]string{
-	"github":    "GITHUB_TOKEN",
-	"gitlab":    "GITLAB_TOKEN",
-	"gitea":     "GITEA_TOKEN",
-	"forgejo":   "FORGEJO_TOKEN",
-	"bitbucket": "BITBUCKET_TOKEN",
+type providerEnvConfig struct {
+	passwordKey string
+	usernameKey string
+}
+
+var envVarForProvider = map[string]providerEnvConfig{
+	"github":    {passwordKey: "GITHUB_TOKEN"},
+	"gitlab":    {passwordKey: "GITLAB_TOKEN"},
+	"gitea":     {passwordKey: "GITEA_TOKEN"},
+	"forgejo":   {passwordKey: "FORGEJO_TOKEN"},
+	"bitbucket": {passwordKey: "BITBUCKET_TOKEN", usernameKey: "BITBUCKET_USERNAME"},
 }
 
 func CredentialGetterForProvider(providerType string) CredentialGetter {
-	envKey := envVarForProvider[providerType]
-	if envKey == "" {
-		envKey = "GITHUB_TOKEN"
+	cfg := envVarForProvider[providerType]
+	if cfg.passwordKey == "" {
+		cfg = envVarForProvider["github"]
 	}
 
 	getters := []CredentialGetter{
-		&EnvToken{PasswordKey: envKey},
+		&EnvToken{PasswordKey: cfg.passwordKey, UsernameKey: cfg.usernameKey},
 		&Netrc{},
 		&GitCredentials{GitPath: "git"},
 	}
