@@ -12,6 +12,8 @@ type PullRequester interface {
 	DefaultBranch(context.Context) string
 	// StackManager returns the stack manager if native stacks are supported, or nil.
 	StackManager() StackManager
+	// BodyFormatter returns the formatter used to render PR body sections.
+	BodyFormatter() BodyFormatter
 }
 
 // PullRequestOptions are the options available to create or update a pull request
