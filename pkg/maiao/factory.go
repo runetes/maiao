@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/adevinta/maiao/pkg/api"
+	"github.com/adevinta/maiao/pkg/bitbucket"
 	"github.com/adevinta/maiao/pkg/forgejo"
 	"github.com/adevinta/maiao/pkg/gitea"
 	"github.com/adevinta/maiao/pkg/gitlab"
@@ -57,6 +58,13 @@ func newPullRequester(ctx context.Context, remote *git.Remote, repoPath string) 
 			r, err := forgejo.NewForgejoUpserter(ctx, endpoint)
 			if err != nil {
 				log.ForContext(ctx).WithError(err).Errorf("failed to instantiate forgejo client")
+				continue
+			}
+			return r, nil
+		case provider.Bitbucket:
+			r, err := bitbucket.NewBitbucketUpserter(ctx, endpoint)
+			if err != nil {
+				log.ForContext(ctx).WithError(err).Errorf("failed to instantiate bitbucket client")
 				continue
 			}
 			return r, nil
