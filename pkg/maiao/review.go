@@ -12,8 +12,8 @@ import (
 	"github.com/adevinta/maiao/pkg/api"
 	"github.com/adevinta/maiao/pkg/credentials"
 	lgit "github.com/adevinta/maiao/pkg/git"
-	gh "github.com/adevinta/maiao/pkg/github"
 	"github.com/adevinta/maiao/pkg/log"
+	"github.com/adevinta/maiao/pkg/provider"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -92,10 +92,16 @@ func Review(ctx context.Context, repo lgit.Repository, options ReviewOptions) er
 		return err
 	}
 
+	providerType, err := provider.Detect(endpoint.Host, options.RepoPath)
+	if err != nil {
+		return err
+	}
+	credGetter := credentials.CredentialGetterForProvider(string(providerType))
+
 	log.ForContext(ctx).Debugf("fetching remote")
 	err = remote.Fetch(&git.FetchOptions{
 		RemoteName: options.Remote,
-		Auth:       &credentials.GitAuth{Credentials: gh.DefaultCredentialGetter, Endpoint: endpoint},
+		Auth:       &credentials.GitAuth{Credentials: credGetter, Endpoint: endpoint},
 	})
 	if err != nil && err != git.NoErrAlreadyUpToDate {
 		log.ForContext(ctx).WithError(err).Error("failed to update git repository")
@@ -249,11 +255,17 @@ func sendPrs(ctx context.Context, repo lgit.Repository, options ReviewOptions, b
 		return err
 	}
 
+	providerType, err := provider.Detect(endpoint.Host, options.RepoPath)
+	if err != nil {
+		return err
+	}
+	credGetter := credentials.CredentialGetterForProvider(string(providerType))
+
 	log.ForContext(ctx).WithField("refspec", refspecs).Debugf("pushing PR changes")
 	err = repo.Push(&git.PushOptions{
 		RemoteName: options.Remote,
 		RefSpecs:   refspecs,
-		Auth:       &credentials.GitAuth{Credentials: gh.DefaultCredentialGetter, Endpoint: endpoint},
+		Auth:       &credentials.GitAuth{Credentials: credGetter, Endpoint: endpoint},
 		Force:      true,
 	})
 	if err != nil && err != git.NoErrAlreadyUpToDate {
