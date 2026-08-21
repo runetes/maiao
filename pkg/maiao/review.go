@@ -72,7 +72,7 @@ func Review(ctx context.Context, repo lgit.Repository, options ReviewOptions) er
 		return err
 	}
 
-	prAPI, err := api.NewPullRequester(ctx, remote)
+	prAPI, err := api.NewPullRequester(ctx, remote, options.RepoPath)
 	if err != nil {
 		return err
 	}
@@ -260,7 +260,7 @@ func sendPrs(ctx context.Context, repo lgit.Repository, options ReviewOptions, b
 		return err
 	}
 
-	prAPI, err := api.NewPullRequester(ctx, remote)
+	prAPI, err := api.NewPullRequester(ctx, remote, options.RepoPath)
 	if err != nil {
 		return err
 	}

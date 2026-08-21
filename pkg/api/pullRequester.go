@@ -3,8 +3,10 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/adevinta/maiao/pkg/log"
+	"github.com/adevinta/maiao/pkg/provider"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/sirupsen/logrus"
@@ -38,7 +40,7 @@ type PullRequest struct {
 	URL string
 }
 
-func NewPullRequester(ctx context.Context, remote *git.Remote) (PullRequester, error) {
+func NewPullRequester(ctx context.Context, remote *git.Remote, repoPath string) (PullRequester, error) {
 	for _, u := range remote.Config().URLs {
 		ctx := log.WithContextFields(ctx, logrus.Fields{"remote-url": u})
 		endpoint, err := transport.NewEndpoint(u)
@@ -46,12 +48,24 @@ func NewPullRequester(ctx context.Context, remote *git.Remote) (PullRequester, e
 			log.ForContext(ctx).WithError(err).Errorf("failed to parse remote")
 			continue
 		}
-		r, err := NewGitHubUpserter(ctx, endpoint)
+
+		providerType, err := provider.Detect(endpoint.Host, repoPath)
 		if err != nil {
-			log.ForContext(ctx).WithError(err).Errorf("failed to instanciate github client")
+			log.ForContext(ctx).WithError(err).Errorf("failed to detect provider")
 			continue
 		}
-		return r, nil
+
+		switch providerType {
+		case provider.GitHub:
+			r, err := NewGitHubUpserter(ctx, endpoint)
+			if err != nil {
+				log.ForContext(ctx).WithError(err).Errorf("failed to instantiate github client")
+				continue
+			}
+			return r, nil
+		default:
+			return nil, fmt.Errorf("provider %q is not yet supported", providerType)
+		}
 	}
-	return nil, errors.New("not implemented")
+	return nil, errors.New("no supported provider found for remote")
 }
