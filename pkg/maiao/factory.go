@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/adevinta/maiao/pkg/api"
+	"github.com/adevinta/maiao/pkg/gitea"
 	"github.com/adevinta/maiao/pkg/gitlab"
 	"github.com/adevinta/maiao/pkg/log"
 	"github.com/adevinta/maiao/pkg/provider"
@@ -41,6 +42,13 @@ func newPullRequester(ctx context.Context, remote *git.Remote, repoPath string) 
 			r, err := gitlab.NewGitLabUpserter(ctx, endpoint)
 			if err != nil {
 				log.ForContext(ctx).WithError(err).Errorf("failed to instantiate gitlab client")
+				continue
+			}
+			return r, nil
+		case provider.Gitea:
+			r, err := gitea.NewGiteaUpserter(ctx, endpoint)
+			if err != nil {
+				log.ForContext(ctx).WithError(err).Errorf("failed to instantiate gitea client")
 				continue
 			}
 			return r, nil
