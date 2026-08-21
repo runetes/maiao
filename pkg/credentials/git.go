@@ -22,6 +22,9 @@ func realRun(opts runOpts) (string, error) {
 	if opts.stdin != "" {
 		cmd.Stdin = strings.NewReader(opts.stdin)
 	}
+	if err := cmd.Run(); err != nil {
+		return "", err
+	}
 	return b.String(), nil
 }
 

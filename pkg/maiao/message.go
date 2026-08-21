@@ -83,12 +83,18 @@ func prOptions(repo lgit.Repository, prAPI api.PullRequester, options ReviewOpti
 		additions = append(additions, topicDetails(f, prAPI, options.Topic)...)
 	}
 
+	var parentPullNumber string
+	if change.parent != nil && change.parent.pr != nil {
+		parentPullNumber = change.parent.pr.ID
+	}
+
 	return api.PullRequestOptions{
-		Base:  base,
-		Head:  change.branch,
-		Title: title,
-		Body:  strings.Join(append([]string{change.message.Body}, additions...), "\n"),
-		Ready: options.Ready,
-		WIP:   wip,
+		Base:             base,
+		Head:             change.branch,
+		Title:            title,
+		Body:             strings.Join(append([]string{change.message.Body}, additions...), "\n"),
+		Ready:            options.Ready,
+		WIP:              wip,
+		ParentPullNumber: parentPullNumber,
 	}
 }

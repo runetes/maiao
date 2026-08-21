@@ -6,7 +6,7 @@ Welcome to Maiao! This guide will help you set up and start using stacked pull r
 
 Before installing Maiao, ensure you have:
 - Git installed (version 2.0+)
-- An account on your git hosting provider (GitHub, GitLab, Gitea, Forgejo, or Bitbucket Cloud)
+- An account on your git hosting provider (GitHub, GitLab, Gitea, Forgejo, Bitbucket Cloud, or Cursor Origin)
 - An API token for your provider (see [Configuration](#-configuration) below)
 
 ## 📦 Installation
@@ -64,11 +64,12 @@ Maiao auto-detects your provider from the remote URL for known hosts:
 - `gitlab.com` → GitLab
 - `codeberg.org` → Forgejo
 - `bitbucket.org` → Bitbucket Cloud
+- `origin.cursor.com` → Cursor Origin
 
 For self-hosted instances, Maiao prompts you on first use and saves the choice:
 
 ```bash
-git config maiao.provider gitlab  # or: github, gitea, forgejo, bitbucket
+git config maiao.provider gitlab  # or: github, gitea, forgejo, bitbucket, origin
 ```
 
 ### Authentication
@@ -148,6 +149,25 @@ machine bitbucket.org
 ```
 
 Create an app password at [Bitbucket Settings → App passwords](https://bitbucket.org/account/settings/app-passwords/) with `Repositories: Read/Write` and `Pull requests: Read/Write` permissions.
+
+#### Cursor Origin (beta)
+
+> **Note:** Cursor Origin is currently in beta. The API and behavior may change.
+
+Cursor Origin uses a git credential helper installed by the Origin CLI. Maiao picks up the token automatically via `git credential fill`:
+
+```bash
+# Authenticate with Origin (one-time setup)
+origin auth login
+```
+
+Alternatively, you can set the token directly:
+
+```bash
+export ORIGIN_TOKEN=<your-origin-token>
+```
+
+Cursor Origin supports native stacking via `parentPullNumber` — Maiao uses this automatically when creating stacked PRs to register the parent-child relationship.
 
 ### 🔐 Experimental: System Keychain (Optional)
 
