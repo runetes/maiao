@@ -60,8 +60,8 @@ type stackResponse struct {
 func (s *GitHubStackManager) CreateOrUpdateStack(ctx context.Context, prNumbers []int) (*Stack, error) {
 	existing, err := s.GetStack(ctx, prNumbers[0])
 	if err == nil && existing != nil {
-		log.ForContext(ctx).WithField("stackID", existing.ID).Debug("stack already exists")
-		return existing, nil
+		log.ForContext(ctx).WithField("stackID", existing.ID).Debug("stack already exists, updating")
+		return s.addToStack(ctx, existing, prNumbers)
 	}
 
 	url := fmt.Sprintf("repos/%s/%s/stacks", s.owner, s.repository)
@@ -79,6 +79,52 @@ func (s *GitHubStackManager) CreateOrUpdateStack(ctx context.Context, prNumbers 
 
 	log.ForContext(ctx).WithField("stackID", resp.ID).Debug("registered GitHub native stack")
 	return stackFromResponse(&resp), nil
+}
+
+func (s *GitHubStackManager) addToStack(ctx context.Context, stack *Stack, prNumbers []int) (*Stack, error) {
+	existing := make(map[int]bool, len(stack.PRs))
+	for _, pr := range stack.PRs {
+		existing[pr] = true
+	}
+	var toAdd []int
+	for _, pr := range prNumbers {
+		if !existing[pr] {
+			toAdd = append(toAdd, pr)
+		}
+	}
+	if len(toAdd) == 0 {
+		return stack, nil
+	}
+
+	url := fmt.Sprintf("repos/%s/%s/stacks/%s/add", s.owner, s.repository, stack.ID)
+	body := createStackRequest{PullRequests: toAdd}
+	req, err := s.client.NewRequest(ctx, http.MethodPost, url, body, github.WithVersion(stackAPIVersion))
+	if err != nil {
+		return nil, fmt.Errorf("adding PRs to stack request: %w", err)
+	}
+
+	var resp stackResponse
+	_, err = s.client.Do(req, &resp)
+	if err != nil {
+		return nil, fmt.Errorf("adding PRs to stack: %w", err)
+	}
+
+	log.ForContext(ctx).WithField("stackID", stack.ID).Debug("updated GitHub native stack")
+	return stackFromResponse(&resp), nil
+}
+
+func (s *GitHubStackManager) DeleteStack(ctx context.Context, stackID string) error {
+	url := fmt.Sprintf("repos/%s/%s/stacks/%s", s.owner, s.repository, stackID)
+	req, err := s.client.NewRequest(ctx, http.MethodDelete, url, nil, github.WithVersion(stackAPIVersion))
+	if err != nil {
+		return fmt.Errorf("creating delete stack request: %w", err)
+	}
+	_, err = s.client.Do(req, nil)
+	if err != nil {
+		return fmt.Errorf("deleting stack: %w", err)
+	}
+	log.ForContext(ctx).WithField("stackID", stackID).Debug("deleted GitHub native stack")
+	return nil
 }
 
 func (s *GitHubStackManager) GetStack(ctx context.Context, prNumber int) (*Stack, error) {
@@ -107,7 +153,7 @@ func stackFromResponse(resp *stackResponse) *Stack {
 		prs[i] = p.Number
 	}
 	return &Stack{
-		ID:  fmt.Sprintf("%d", resp.ID),
+		ID:  fmt.Sprintf("%d", resp.Number),
 		PRs: prs,
 	}
 }

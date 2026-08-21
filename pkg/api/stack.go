@@ -9,6 +9,8 @@ type StackManager interface {
 	CreateOrUpdateStack(ctx context.Context, prNumbers []int) (*Stack, error)
 	// GetStack retrieves the stack associated with a given PR number.
 	GetStack(ctx context.Context, prNumber int) (*Stack, error)
+	// DeleteStack removes a stack by its ID, unstacking all PRs in it.
+	DeleteStack(ctx context.Context, stackID string) error
 	// Available reports whether the GitHub Stack API is supported on this instance.
 	Available(ctx context.Context) bool
 }
