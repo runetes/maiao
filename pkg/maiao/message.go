@@ -71,6 +71,8 @@ func relatedChanges(parents, futures []*change) []string {
 func prOptions(repo lgit.Repository, prAPI api.PullRequester, options ReviewOptions, change *change, parents, futures []*change) api.PullRequestOptions {
 	base := options.Branch
 	title := change.message.Title
+	title = strings.TrimPrefix(title, "Draft: ")
+	title = strings.TrimPrefix(title, "WIP: ")
 	if change.parent != nil {
 		if change.parent.branch != "" {
 			base = change.parent.branch
