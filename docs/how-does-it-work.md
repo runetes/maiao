@@ -2,7 +2,7 @@
 
 ## 🎯 Overview
 
-Maiao implements a **stacked diffs** workflow for GitHub, inspired by Gerrit's code review model. It transforms your linear commit history into individual, stacked pull requests where each commit is independently reviewable while maintaining proper dependencies.
+Maiao implements a **stacked diffs** workflow for GitHub, GitLab, Gitea, Forgejo, and Bitbucket Cloud, inspired by Gerrit's code review model. It transforms your linear commit history into individual, stacked pull requests (or merge requests) where each commit is independently reviewable while maintaining proper dependencies.
 
 ## 📚 Background: Stacked Diffs
 
@@ -31,7 +31,7 @@ Change-Id: I8f3c2a1b5e9d7f6a4c3b2a1d0e9f8c7b6a5d4e3f
 
 1. **Track commits across rebases**: Change-ID remains constant even when commit SHA changes
 2. **Enable fixup matching**: `git commit --fixup` matches commits by title, Change-ID confirms the match
-3. **Map to GitHub branches**: Each Change-ID generates a unique branch name (`maiao.<Change-ID>`)
+3. **Map to remote branches**: Each Change-ID generates a unique branch name (`maiao.<Change-ID>`)
 4. **Detect merged changes**: Identify which commits already exist in the target branch
 
 ### How Change-IDs are Generated
@@ -51,7 +51,7 @@ Each commit creates an **ephemeral remote branch**: `maiao.<Change-ID>`
 ```
 Commit SHA:    abc1234567890def
 Change-ID:     I8f3c2a1b5e9d7f6a4c3b2a1d0e9f8c7b6a5d4e3f
-GitHub Branch: maiao.I8f3c2a1b5e9d7f6a4c3b2a1d0e9f8c7b6a5d4e3f
+Remote Branch: maiao.I8f3c2a1b5e9d7f6a4c3b2a1d0e9f8c7b6a5d4e3f
 ```
 
 **Key Properties:**
@@ -183,7 +183,7 @@ repo.Push(&git.PushOptions{
 })
 ```
 
-**Result on GitHub:**
+**Result on remote:**
 ```
 origin/main  → I (commit I's SHA)
 maiao.I111   → A' (commit A's rebased SHA)
@@ -200,18 +200,20 @@ var parent *change
 for i, change := range changes {
     change.parent = parent
 
-    // Build PR options with stacking
+    // Build PR/MR options with stacking
     opts := prOptions(repo, prAPI, options, change, changes[:i], changes[i+1:])
 
-    // Create or find existing PR
+    // Create or find existing PR/MR via the PullRequester interface
     pr, created, err := prAPI.Ensure(ctx, opts)
 
     change.pr = pr
-    parent = change  // Next PR stacks on this one
+    parent = change  // Next PR/MR stacks on this one
 }
 ```
 
-**PR Structure Created:**
+The `PullRequester` interface abstracts the provider-specific API. Each provider (GitHub, GitLab, Gitea, Forgejo, Bitbucket) implements `Ensure()` and `Update()` using its own REST API.
+
+**PR/MR Structure Created:**
 ```
 PR #1: maiao.I111 → origin/main
        Title: "Add user authentication"
@@ -228,6 +230,8 @@ PR #3: maiao.I333 → maiao.I222
        Base: maiao.I222  ← Stacked on PR #2
        Head: maiao.I333
 ```
+
+On GitLab, this target-branch chaining is automatically detected as a stack (up to 20 MRs).
 
 ## 📊 Visual Workflow Example
 
@@ -379,6 +383,39 @@ PR #2 base changed: maiao.I111 → origin/main
 PR #3 base unchanged: maiao.I222 (rebased)
 ```
 
+## 🌐 Provider Architecture
+
+### Auto-Detection
+
+Maiao detects the provider from your remote URL (`pkg/provider/detect.go`):
+
+1. **Known hosts** — `github.com`, `gitlab.com`, `codeberg.org`, `bitbucket.org` are mapped automatically
+2. **Git config** — reads `git config maiao.provider` for self-hosted instances
+3. **Interactive prompt** — if unknown, prompts the user to select a provider and saves to git config
+
+### Credential Chain
+
+For each provider, Maiao tries credentials in order (`pkg/credentials/provider.go`):
+
+1. **Environment variable** — `GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITEA_TOKEN`, `FORGEJO_TOKEN`, or `BITBUCKET_TOKEN` (+ `BITBUCKET_USERNAME`)
+2. **Netrc** — `~/.netrc` machine entries
+3. **Git credential helpers** — whatever `git credential fill` returns
+4. **System keychain** — macOS Keychain, pass, etc. (experimental)
+
+### WIP/Draft Handling
+
+Each provider handles work-in-progress differently:
+- **GitHub** — sets `draft: true` via the API
+- **GitLab** — prefixes title with `Draft: `
+- **Gitea/Forgejo** — prefixes title with `WIP: `
+- **Bitbucket** — no draft support (logs a warning)
+
+Maiao strips `WIP:`/`Draft:` from commit titles, detects the intent, and lets each provider apply it in its own way.
+
+### SSH Host Key Resolution
+
+When connecting to a provider via SSH for the first time, go-git's `knownhosts` library may fail if the host key isn't in `~/.ssh/known_hosts`. Maiao automatically detects this, prompts the user, and runs `ssh-keyscan` to add all key types.
+
 ## 🔍 Technical Deep Dive
 
 ### Commit Message Parsing
@@ -419,32 +456,29 @@ func (m *Message) GetChangeID() (changeID string, ok bool) {
 }
 ```
 
-### GitHub API Integration
+### Provider API Integration
 
-**Code:** `pkg/api/github.go:48-96`
+**Interface:** `pkg/api/pullRequester.go`
 
 ```go
-func (g *GitHub) Ensure(ctx, options) (*PullRequest, bool, error) {
-    // 1. List existing PRs for this head branch
-    prs := g.PullRequests.List(ctx, g.Owner, g.Repository, &github.PullRequestListOptions{
-        Head: g.Owner + ":" + options.Head,
-    })
-
-    switch len(prs) {
-    case 0:
-        // Create new PR
-        pr := g.PullRequests.Create(ctx, g.Owner, g.Repository, &github.NewPullRequest{
-            Title: options.Title,
-            Body:  options.Body,
-            Base:  options.Base,
-            Head:  options.Head,
-        })
-        return pr, true, nil  // Created
-    case 1:
-        return prs[0], false, nil  // Already exists
-    }
+type PullRequester interface {
+    Ensure(context.Context, PullRequestOptions) (*PullRequest, bool, error)
+    Update(context.Context, *PullRequest, PullRequestOptions) (*PullRequest, error)
+    LinkedTopicIssues(topicSearchString string) string
+    DefaultBranch(context.Context) string
+    StackManager() StackManager
+    BodyFormatter() BodyFormatter
 }
 ```
+
+Each provider implements this interface:
+- **GitHub** (`pkg/api/github.go`) — uses the `google/go-github` SDK
+- **GitLab** (`pkg/gitlab/`) — REST v4 API with `PRIVATE-TOKEN` header
+- **Gitea** (`pkg/gitea/`) — REST v1 API with `Authorization: token` header
+- **Forgejo** (`pkg/forgejo/`) — embeds Gitea's base client
+- **Bitbucket Cloud** (`pkg/bitbucket/`) — REST 2.0 API with basic auth
+
+The `BodyFormatter` interface controls how PR body sections are rendered: HTML `<details>` for GitHub/GitLab/Gitea/Forgejo, Markdown headings for Bitbucket.
 
 ### Force Push Strategy
 
@@ -536,7 +570,7 @@ Change-IDs persist across:
 
 **Protected against:**
 - Multiple `git review` runs (last write wins, deterministic)
-- Simultaneous PR creation (GitHub API handles duplicates)
+- Simultaneous PR creation (provider APIs handle duplicates)
 
 **Not protected against:**
 - Manual edits to `maiao.*` branches (will be overwritten)

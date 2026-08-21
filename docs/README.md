@@ -6,20 +6,33 @@
 
 > **Note:** This is a community fork of [adevinta/maiao](https://github.com/adevinta/maiao). The original maintainers are no longer at Adevinta and the upstream repository is no longer actively maintained. This fork continues development under [runetes/maiao](https://github.com/runetes/maiao).
 
-**Gerrit-style code review workflow for GitHub**
+**Gerrit-style code review workflow for GitHub, GitLab, Gitea, Forgejo, and Bitbucket Cloud**
 
-Maiao brings the power of **stacked pull requests** to GitHub, enabling you to break large features into small, reviewable commits where each commit becomes its own PR.
+Maiao brings the power of **stacked pull requests** (or merge requests) to your git hosting provider, enabling you to break large features into small, reviewable commits where each commit becomes its own PR/MR.
 
 ## What is Maiao?
 
 Maiao provides the `git review` command that:
 
-- **Creates one PR per commit** in your branch
-- **Stacks PRs automatically** with proper parent-child dependencies
-- **Registers native GitHub Stacks** when available, for first-class UI support
+- **Creates one PR/MR per commit** in your branch
+- **Stacks PRs/MRs automatically** with proper parent-child dependencies
+- **Registers native stacks** when available (GitHub Stacks, GitLab auto-detected stacks)
 - **Manages fixups elegantly** using `git commit --fixup`
 - **Tracks commits via Change-IDs** (using the Gerrit commit-msg hook)
-- **Auto-rebases your stack** when PRs get merged
+- **Auto-rebases your stack** when PRs/MRs get merged
+- **Auto-detects your provider** from the remote URL
+
+## Supported Providers
+
+| Provider | PR/MR type | WIP/Draft | Native stacks |
+|----------|------------|-----------|---------------|
+| GitHub | Pull Request | API field | Yes (explicit registration) |
+| GitLab | Merge Request | `Draft:` title prefix | Yes (auto-detected from target branch, up to 20 MRs) |
+| Gitea | Pull Request | `WIP:` title prefix | No |
+| Forgejo/Codeberg | Pull Request | `WIP:` title prefix | No |
+| Bitbucket Cloud | Pull Request | Not supported | No |
+
+Maiao auto-detects the provider from your remote URL for known hosts (`github.com`, `gitlab.com`, `codeberg.org`, `bitbucket.org`). For self-hosted instances, it prompts on first use and saves the choice to `git config maiao.provider`.
 
 ## Quick Example
 
@@ -29,11 +42,11 @@ git commit -m "Add user authentication"
 git commit -m "Add authorization middleware"
 git commit -m "Add admin endpoints"
 
-# Create stacked PRs for all commits
+# Create stacked PRs/MRs for all commits
 git review
 ```
 
-**Result**: Three GitHub PRs created and registered as a native stack:
+**Result**: Three PRs/MRs created and stacked:
 
 - PR #1: `Add user authentication` → `main`
 - PR #2: `Add authorization middleware` → PR #1
@@ -42,12 +55,13 @@ git review
 ## Key Benefits
 
 - **Granular Reviews**: Each commit reviewed independently for faster, focused feedback
-- **Clear History**: One logical change per PR maintains clean git history
+- **Clear History**: One logical change per PR/MR maintains clean git history
 - **Easy Fixups**: Address review feedback with `git commit --fixup <sha>`
-- **Automatic Stacking**: Tool manages PR dependencies automatically
-- **Native GitHub Stacks**: Integrates with GitHub's stack UI for unified review and merge controls
-- **Merge Detection**: Stack updates automatically when PRs merge
+- **Automatic Stacking**: Tool manages PR/MR dependencies automatically
+- **Native Stacks**: Integrates with GitHub Stacks and GitLab's auto-detected stacks
+- **Merge Detection**: Stack updates automatically when PRs/MRs merge
 - **Rebase Integration**: Handles upstream changes gracefully
+- **Multi-Provider**: Works across GitHub, GitLab, Gitea, Forgejo, and Bitbucket Cloud
 
 ## Native GitHub Stacks
 
