@@ -174,6 +174,10 @@ func (g *GitHub) StackManager() StackManager {
 	return g.stackManager
 }
 
+func (g *GitHub) BodyFormatter() BodyFormatter {
+	return HTMLBodyFormatter{}
+}
+
 // LinkedTopicIssues returns the search URL for linked issues
 func (g *GitHub) LinkedTopicIssues(topicSearchString string) string {
 	values := url.Values{}

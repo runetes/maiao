@@ -128,6 +128,10 @@ func (b *BaseClient) StackManager() api.StackManager {
 	return nil
 }
 
+func (b *BaseClient) BodyFormatter() api.BodyFormatter {
+	return api.HTMLBodyFormatter{}
+}
+
 func (b *BaseClient) listPRs(ctx context.Context, head string) ([]pullRequest, error) {
 	params := url.Values{}
 	params.Add("state", "open")

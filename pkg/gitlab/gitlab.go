@@ -179,6 +179,10 @@ func (g *GitLab) StackManager() api.StackManager {
 	return nil
 }
 
+func (g *GitLab) BodyFormatter() api.BodyFormatter {
+	return api.HTMLBodyFormatter{}
+}
+
 func (g *GitLab) listMRs(ctx context.Context, sourceBranch string) ([]mergeRequest, error) {
 	params := url.Values{}
 	params.Add("source_branch", sourceBranch)

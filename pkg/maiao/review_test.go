@@ -149,6 +149,10 @@ func (a *testAPI) StackManager() api.StackManager {
 	return nil
 }
 
+func (a *testAPI) BodyFormatter() api.BodyFormatter {
+	return api.HTMLBodyFormatter{}
+}
+
 func TestDefaultOptionsUsesGitDefaults(t *testing.T) {
 	opts := ReviewOptions{}
 	repo := &testRepository{}
