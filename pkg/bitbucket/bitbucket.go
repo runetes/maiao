@@ -188,6 +188,10 @@ func (b *Bitbucket) StackManager() api.StackManager {
 	return nil
 }
 
+func (b *Bitbucket) BodyFormatter() api.BodyFormatter {
+	return MarkdownBodyFormatter{}
+}
+
 func (b *Bitbucket) listPRs(ctx context.Context, sourceBranch string) ([]pullRequest, error) {
 	query := fmt.Sprintf(`source.branch.name = "%s" AND state = "OPEN"`, sourceBranch)
 	params := url.Values{}

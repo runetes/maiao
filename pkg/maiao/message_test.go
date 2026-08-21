@@ -8,23 +8,20 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestDetailsSkipsMissingSummaries(t *testing.T) {
+func TestHTMLFormatterSectionSkipsMissingSummaries(t *testing.T) {
+	f := api.HTMLBodyFormatter{}
 	assert.Equal(t,
 		[]string{
 			"<details>",
 			"hello world",
 			"</details>",
 		},
-		details(
-			[]string{
-				"hello world",
-			},
-			"",
-		),
+		f.Section("", []string{"hello world"}),
 	)
 }
 
-func TestDetailsIncludesSummary(t *testing.T) {
+func TestHTMLFormatterSectionIncludesSummary(t *testing.T) {
+	f := api.HTMLBodyFormatter{}
 	assert.Equal(t,
 		[]string{
 			"<details>",
@@ -34,16 +31,17 @@ func TestDetailsIncludesSummary(t *testing.T) {
 			"hello world",
 			"</details>",
 		},
-		details(
-			[]string{
-				"hello world",
-			},
-			"summary",
-		),
+		f.Section("summary", []string{"hello world"}),
 	)
 }
 
 func TestTopicDetailsProvidesLink(t *testing.T) {
+	prAPI := &linkedTopicIssuesFunc{
+		linkedTopicIssuesFunc: func(topicSearchString string) string {
+			assert.Equal(t, "89889b28e9672bff47fa4286f4aff4a80e09eade", topicSearchString)
+			return "https://search.example.com/topic"
+		},
+	}
 	assert.Equal(t,
 		[]string{
 			"<details>",
@@ -52,15 +50,10 @@ func TestTopicDetailsProvidesLink(t *testing.T) {
 			"</summary>",
 			"This change is part of a broader topic that can be in multiple repositories.",
 			"<br/>",
-			`Topic: <a href="https://search.example.com/topic" searchSha="89889b28e9672bff47fa4286f4aff4a80e09eade">some topic</a>`,
+			`Topic: <a href="https://search.example.com/topic">some topic</a>`,
 			"</details>",
 		},
-		topicDetails(&linkedTopicIssuesFunc{
-			linkedTopicIssuesFunc: func(topicSearchString string) string {
-				assert.Equal(t, "89889b28e9672bff47fa4286f4aff4a80e09eade", topicSearchString)
-				return "https://search.example.com/topic"
-			},
-		}, "some topic"),
+		topicDetails(api.HTMLBodyFormatter{}, prAPI, "some topic"),
 	)
 }
 
@@ -71,6 +64,10 @@ type linkedTopicIssuesFunc struct {
 
 func (l linkedTopicIssuesFunc) LinkedTopicIssues(topicSearchString string) string {
 	return l.linkedTopicIssuesFunc(topicSearchString)
+}
+
+func (l linkedTopicIssuesFunc) BodyFormatter() api.BodyFormatter {
+	return api.HTMLBodyFormatter{}
 }
 
 func TestPrOptionsTitleStripsWIPBeforeNeedPrefix(t *testing.T) {
