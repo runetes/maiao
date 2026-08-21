@@ -55,3 +55,20 @@ func TestCredentialGetterForProviderReturnsErrorWhenNoCredentials(t *testing.T) 
 	_, err := getter.CredentialForHost("non-existent-host-in-netrc.example.com")
 	assert.Error(t, err)
 }
+
+func TestCredentialGetterForBitbucketUsesUsername(t *testing.T) {
+	oldToken := os.Getenv("BITBUCKET_TOKEN")
+	oldUser := os.Getenv("BITBUCKET_USERNAME")
+	defer func() {
+		os.Setenv("BITBUCKET_TOKEN", oldToken)
+		os.Setenv("BITBUCKET_USERNAME", oldUser)
+	}()
+	os.Setenv("BITBUCKET_TOKEN", "app-password")
+	os.Setenv("BITBUCKET_USERNAME", "myuser@example.com")
+
+	getter := CredentialGetterForProvider("bitbucket")
+	cred, err := getter.CredentialForHost("bitbucket.org")
+	require.NoError(t, err)
+	assert.Equal(t, "app-password", cred.Password)
+	assert.Equal(t, "myuser@example.com", cred.Username)
+}
