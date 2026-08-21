@@ -12,6 +12,7 @@ func (MarkdownBodyFormatter) Section(title string, content []string) []string {
 	r := []string{}
 	if title != "" {
 		r = append(r, "###### "+title)
+		r = append(r, "")
 	}
 	for _, line := range content {
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "- ") {
@@ -24,7 +25,7 @@ func (MarkdownBodyFormatter) Section(title string, content []string) []string {
 }
 
 func (MarkdownBodyFormatter) Link(url, text string) string {
-	return fmt.Sprintf("[%s|%s]", text, url)
+	return fmt.Sprintf("[%s](%s)", text, url)
 }
 
 func (MarkdownBodyFormatter) LineBreak() string {
