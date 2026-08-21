@@ -43,6 +43,7 @@ func review(cmd *cobra.Command, args []string) error {
 		}
 	}
 	return maiao.Review(context.Background(), repo, maiao.ReviewOptions{
+		RepoPath:       path,
 		Remote:         cmd.Flag("remote").Value.String(),
 		SkipRebase:     cmd.Flag("no-rebase").Value.String() != "false",
 		Topic:          cmd.Flag("topic").Value.String(),
