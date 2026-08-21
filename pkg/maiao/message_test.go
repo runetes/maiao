@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/adevinta/maiao/pkg/api"
+	lgit "github.com/adevinta/maiao/pkg/git"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -70,4 +71,62 @@ type linkedTopicIssuesFunc struct {
 
 func (l linkedTopicIssuesFunc) LinkedTopicIssues(topicSearchString string) string {
 	return l.linkedTopicIssuesFunc(topicSearchString)
+}
+
+func TestPrOptionsTitleStripsWIPBeforeNeedPrefix(t *testing.T) {
+	prAPI := &linkedTopicIssuesFunc{
+		linkedTopicIssuesFunc: func(s string) string { return "" },
+	}
+	repo := &testRepository{}
+
+	parentChange := &change{
+		message: &lgit.Message{Title: "Parent commit"},
+		branch:  "maiao.parent",
+		pr:      &api.PullRequest{ID: "6", URL: "http://example.com/6"},
+	}
+	childChange := &change{
+		message: &lgit.Message{Title: "WIP: My Feature", Body: "description"},
+		branch:  "maiao.child",
+		parent:  parentChange,
+	}
+
+	opts := prOptions(repo, prAPI, ReviewOptions{Branch: "main", WorkInProgress: true}, childChange, []*change{parentChange}, []*change{})
+	assert.Equal(t, "[need #6] My Feature", opts.Title)
+	assert.True(t, opts.WIP)
+}
+
+func TestPrOptionsTitleStripsDraftBeforeNeedPrefix(t *testing.T) {
+	prAPI := &linkedTopicIssuesFunc{
+		linkedTopicIssuesFunc: func(s string) string { return "" },
+	}
+	repo := &testRepository{}
+
+	parentChange := &change{
+		message: &lgit.Message{Title: "Parent commit"},
+		branch:  "maiao.parent",
+		pr:      &api.PullRequest{ID: "3", URL: "http://example.com/3"},
+	}
+	childChange := &change{
+		message: &lgit.Message{Title: "Draft: My Feature", Body: "description"},
+		branch:  "maiao.child",
+		parent:  parentChange,
+	}
+
+	opts := prOptions(repo, prAPI, ReviewOptions{Branch: "main"}, childChange, []*change{parentChange}, []*change{})
+	assert.Equal(t, "[need #3] My Feature", opts.Title)
+}
+
+func TestPrOptionsTitleWithoutPrefixUnchanged(t *testing.T) {
+	prAPI := &linkedTopicIssuesFunc{
+		linkedTopicIssuesFunc: func(s string) string { return "" },
+	}
+	repo := &testRepository{}
+
+	childChange := &change{
+		message: &lgit.Message{Title: "My Feature", Body: "description"},
+		branch:  "maiao.child",
+	}
+
+	opts := prOptions(repo, prAPI, ReviewOptions{Branch: "main"}, childChange, []*change{}, []*change{})
+	assert.Equal(t, "My Feature", opts.Title)
 }
