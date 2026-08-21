@@ -11,6 +11,7 @@ import (
 	"github.com/adevinta/maiao/pkg/gitea"
 	"github.com/adevinta/maiao/pkg/gitlab"
 	"github.com/adevinta/maiao/pkg/log"
+	"github.com/adevinta/maiao/pkg/origin"
 	"github.com/adevinta/maiao/pkg/provider"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -72,6 +73,14 @@ func newPullRequester(ctx context.Context, remote *git.Remote, repoPath string) 
 			r, err := bitbucket.NewBitbucketUpserter(ctx, endpoint)
 			if err != nil {
 				log.ForContext(ctx).WithError(err).Errorf("failed to instantiate bitbucket client")
+				lastErr = err
+				continue
+			}
+			return r, nil
+		case provider.Origin:
+			r, err := origin.NewOriginUpserter(ctx, endpoint)
+			if err != nil {
+				log.ForContext(ctx).WithError(err).Errorf("failed to instantiate origin client")
 				lastErr = err
 				continue
 			}
