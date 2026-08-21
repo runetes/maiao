@@ -121,6 +121,11 @@ func (g *GitHub) Update(ctx context.Context, pr *PullRequest, options PullReques
 		},
 	}
 	p, _, err := g.PullRequests.Edit(ctx, g.Owner, g.Repository, id, prUpdateOptions)
+	if isStackedBaseError(err) {
+		log.ForContext(ctx).Info("base branch is managed by the stack, updating without base")
+		prUpdateOptions.Base = nil
+		p, _, err = g.PullRequests.Edit(ctx, g.Owner, g.Repository, id, prUpdateOptions)
+	}
 	if err != nil {
 		log.ForContext(ctx).WithError(err).Error("failed to edit pull request")
 		return nil, err
@@ -185,6 +190,19 @@ func (g *GitHub) LinkedTopicIssues(topicSearchString string) string {
 	values.Add("type", "issues")
 	values.Encode()
 	return `https://` + g.Host + `/search?` + values.Encode()
+}
+
+func isStackedBaseError(err error) bool {
+	var ghErr *github.ErrorResponse
+	if !errors.As(err, &ghErr) {
+		return false
+	}
+	for _, e := range ghErr.Errors {
+		if e.Field == "base" && strings.Contains(e.Message, "part of a stack") {
+			return true
+		}
+	}
+	return false
 }
 
 // NewGitHubUpserter instanciates an upserter that uses the github API to create and update pull requests
