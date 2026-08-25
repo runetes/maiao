@@ -581,6 +581,10 @@ func (m *testStackManager) GetStack(ctx context.Context, prNumber int) (*api.Sta
 	return m.getStack(ctx, prNumber)
 }
 
+func (m *testStackManager) DeleteStack(ctx context.Context, stackID string) error {
+	return nil
+}
+
 type testAPIWithStack struct {
 	testAPI
 	stackMgr api.StackManager
