@@ -1,13 +1,13 @@
 # Getting Started
 
-Welcome to Maiao! This guide will help you set up and start using stacked pull requests in your GitHub workflow.
+Welcome to Maiao! This guide will help you set up and start using stacked pull requests (or merge requests) in your workflow.
 
 ## 📋 Prerequisites
 
 Before installing Maiao, ensure you have:
 - Git installed (version 2.0+)
-- GitHub account with repository access
-- GitHub Personal Access Token with `repo` scope ([create one here](https://github.com/settings/tokens))
+- An account on your git hosting provider (GitHub, GitLab, Gitea, Forgejo, or Bitbucket Cloud)
+- An API token for your provider (see [Configuration](#-configuration) below)
 
 ## 📦 Installation
 
@@ -57,26 +57,101 @@ go build -o /usr/local/bin/git-review ./cmd/maiao
 
 ## ⚙️ Configuration
 
-### GitHub Authentication
+### Provider Detection
 
-Create a `~/.netrc` file with your GitHub credentials:
+Maiao auto-detects your provider from the remote URL for known hosts:
+- `github.com` → GitHub
+- `gitlab.com` → GitLab
+- `codeberg.org` → Forgejo
+- `bitbucket.org` → Bitbucket Cloud
 
+For self-hosted instances, Maiao prompts you on first use and saves the choice:
+
+```bash
+git config maiao.provider gitlab  # or: github, gitea, forgejo, bitbucket
+```
+
+### Authentication
+
+Maiao tries credentials in this order: environment variable → `~/.netrc` → git credential helpers → system keychain.
+
+#### GitHub / GitHub Enterprise
+
+```bash
+export GITHUB_TOKEN=<your-personal-access-token>
+```
+
+Or via `~/.netrc`:
 ```
 machine github.com
   login your.username@example.com
   password <your-personal-access-token>
 ```
 
-**For GitHub Enterprise:**
+Create a token with `repo` scope at [github.com/settings/tokens](https://github.com/settings/tokens).
+
+#### GitLab
+
+```bash
+export GITLAB_TOKEN=<your-personal-access-token>
 ```
-machine github.company.example.com
-  login firstname.lastname@company.example.com
-  password <your-token>
+
+Or via `~/.netrc`:
 ```
+machine gitlab.com
+  login your.username@example.com
+  password <your-personal-access-token>
+```
+
+Create a token with `api` scope at Settings → Access Tokens.
+
+#### Gitea
+
+```bash
+export GITEA_TOKEN=<your-access-token>
+```
+
+Or via `~/.netrc`:
+```
+machine your-gitea-instance.com
+  login your-username
+  password <your-access-token>
+```
+
+#### Forgejo / Codeberg
+
+```bash
+export FORGEJO_TOKEN=<your-access-token>
+```
+
+Or via `~/.netrc`:
+```
+machine codeberg.org
+  login your-username
+  password <your-access-token>
+```
+
+#### Bitbucket Cloud
+
+Bitbucket Cloud requires basic auth with your Atlassian email and an app password:
+
+```bash
+export BITBUCKET_USERNAME=your-email@example.com
+export BITBUCKET_TOKEN=<your-app-password>
+```
+
+Or via `~/.netrc`:
+```
+machine bitbucket.org
+  login your-email@example.com
+  password <your-app-password>
+```
+
+Create an app password at [Bitbucket Settings → App passwords](https://bitbucket.org/account/settings/app-passwords/) with `Repositories: Read/Write` and `Pull requests: Read/Write` permissions.
 
 ### 🔐 Experimental: System Keychain (Optional)
 
-Use your OS keychain (macOS Keychain, pass, etc.) instead of `.netrc`:
+Use your OS keychain (macOS Keychain, pass, etc.) instead of environment variables or `.netrc`:
 
 ```bash
 export MAIAO_EXPERIMENTAL_CREDENTIALS=true
@@ -113,13 +188,15 @@ Maiao aims to solve the classic code review problem:
 
 ![](img/code_reviews_tweet.jpeg)
 
-**Philosophy**: Create small, self-contained commits. Each commit becomes a reviewable PR, stacked on the previous one.
+**Philosophy**: Create small, self-contained commits. Each commit becomes a reviewable PR/MR, stacked on the previous one.
 
 **Benefits**:
 - ✅ Faster reviews (smaller changesets)
 - ✅ Better feedback (focused on one change)
 - ✅ Cleaner history (atomic commits)
 - ✅ Easier debugging (bisectable changes)
+
+This workflow works identically across all supported providers — GitHub PRs, GitLab MRs, etc.
 
 ## 🎯 Basic Workflow Example
 
@@ -255,70 +332,6 @@ git review
 
 Maiao groups all fixups by their target commit and updates PRs accordingly.
 
-## Installation
-
-### Homebrew users
-
-To install maiao with homebrew, you need to tap the repo before installing it:
-
-```bash
-brew tap runetes/maiao https://github.com/runetes/maiao.git
-brew install maiao
-```
-
-### Unix users
-
-The simplest way to install maiao is to download the binary from github. To do so, visit
-the [releases](https://github.com/runetes/maiao/releases) page and download the version you want to install. Then run
-
-```
-mv <downloadsDir>/git-review-`uname -s`-`uname -m` /usr/local/bin/git-review
-chmod +x /usr/local/bin/git-review
-```
-
-!!! warning "MacOS users"
-To make sure the binary is not quarantined run: `xattr -d com.apple.quarantine /usr/local/bin/git-review`
-
-To build a standalone binary, you will need to run `go build -o /usr/local/bin/git-review ./cmd/maiao`
-
-### Windows users
-
-The relevant Windows binary can be downloaded in the [releases](https://github.com/runetes/maiao/releases) page
-
-Download the `git-review-windows-<arch>` where `<arch>` is the architecture of your machine. If you are unsure, usually,
-amd64 is the default windows architecture.
-
-## Configuration
-
-If you have ever installed and configured `adv` command line, you should already be good to go. If not, you will need to
-configure a github token in your netrc file. To do so, follow these steps:
-
-Create your personal [access token](https://github.company.example.com/settings/tokens) with `repo` privileges and
-create a file `~/.netrc` having the following content:
-
-```
-machine github.company.example.com
-  login <firstname>.<lastname>@company.example.com
-  password <your token>
-```
-
-### Experimental system keychain
-
-You may now use all the default keyrings supported by [`99-designs/keyring`](https://pkg.go.dev/github.com/99designs/keyring@v1.2.2#section-readme).
-
-To enable it, ensure you export the `MAIAO_EXPERIMENTAL_CREDENTIALS=true` environment variable before running `git review`.
-Maiao will then use your system keyring like [macOS keychain](https://support.apple.com/en-au/guide/keychain-access/welcome/mac) or [pass](https://www.passwordstore.org/)
-to store GitHub API keys.
-
-We will be happy to receive your feedback about this feature in [maiao's issues](https://github.com/runetes/maiao/issues) 
-
-
-Your environment is then ready to run maiao.
-
-There will be some other configuration required for each repository you need to run maiao on. Don't worry, maiao will
-prompt and suggest you to perform the setup if the configuration is missing.
-
-
 ## 🎓 Understanding Key Concepts
 
 ### Change-IDs
@@ -336,7 +349,7 @@ Change-Id: I8f3c2a1b5e9d7f6a4c3b2a1d0e9f8c7b6a5d4e3f
 **Purpose:**
 - Tracks commits across rebases
 - Enables fixup commit matching
-- Maps commits to GitHub branches
+- Maps commits to remote branches
 
 **Generated by:** Gerrit commit-msg hook (installed via `git review install`)
 
@@ -439,9 +452,38 @@ git rebase origin/main
 
 **Solution:**
 ```bash
-# Check ~/.netrc has correct token
-# Or verify GitHub token has 'repo' scope
-# Recreate token: https://github.com/settings/tokens
+# Check your token is set (see Configuration section above)
+# Verify token has the right scopes for your provider
+# For Bitbucket: ensure both BITBUCKET_USERNAME and BITBUCKET_TOKEN are set
+```
+
+### "401 Unauthorized" on Bitbucket
+
+**Problem:** Bitbucket Cloud requires basic auth with your Atlassian email
+
+**Solution:**
+```bash
+export BITBUCKET_USERNAME=your-email@example.com
+export BITBUCKET_TOKEN=your-app-password
+```
+
+### SSH host key error
+
+**Problem:** SSH host key not found or has changed (common when connecting to a new provider for the first time)
+
+**Solution:** Maiao will automatically prompt you to resolve this via `ssh-keyscan`. Accept the prompt to add the host key.
+
+### "reference not found"
+
+**Problem:** Default branch detection failed (e.g., repo uses "main" but Maiao falls back to "master")
+
+**Solution:**
+```bash
+# Pass the target branch explicitly
+git review main
+
+# Or ensure remote HEAD is set
+git remote set-head origin --auto
 ```
 
 ### "unmatched fixups"
