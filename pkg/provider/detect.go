@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/adevinta/maiao/pkg/prompt"
+	"github.com/sirupsen/logrus"
 )
 
 func Detect(host string, repoPath string) (Type, error) {
@@ -23,7 +24,9 @@ func Detect(host string, repoPath string) (Type, error) {
 		return "", err
 	}
 
-	writeProviderToConfig(repoPath, t)
+	if err := writeProviderToConfig(repoPath, t); err != nil {
+		logrus.WithError(err).Warn("failed to save provider to git config")
+	}
 	return t, nil
 }
 
@@ -44,12 +47,12 @@ func readProviderFromConfig(repoPath string) (Type, error) {
 	return t, nil
 }
 
-func writeProviderToConfig(repoPath string, t Type) {
+func writeProviderToConfig(repoPath string, t Type) error {
 	cmd := exec.Command("git", "config", "--local", "maiao.provider", string(t))
 	if repoPath != "" {
 		cmd.Dir = repoPath
 	}
-	cmd.Run()
+	return cmd.Run()
 }
 
 func promptForProvider(host string) (Type, error) {
