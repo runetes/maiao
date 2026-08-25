@@ -454,9 +454,14 @@ func remoteDefaultBranch(repo lgit.Repository, remoteName string) string {
 	if err != nil {
 		return ""
 	}
-	out, err := exec.Command("git", "-C", wt.Filesystem.Root(), "symbolic-ref", fmt.Sprintf("refs/remotes/%s/HEAD", remoteName)).Output()
+	root := wt.Filesystem.Root()
+	out, err := exec.Command("git", "-C", root, "symbolic-ref", fmt.Sprintf("refs/remotes/%s/HEAD", remoteName)).Output()
 	if err != nil {
-		return ""
+		exec.Command("git", "-C", root, "remote", "set-head", remoteName, "--auto").Run()
+		out, err = exec.Command("git", "-C", root, "symbolic-ref", fmt.Sprintf("refs/remotes/%s/HEAD", remoteName)).Output()
+		if err != nil {
+			return ""
+		}
 	}
 	ref := strings.TrimSpace(string(out))
 	prefix := fmt.Sprintf("refs/remotes/%s/", remoteName)
