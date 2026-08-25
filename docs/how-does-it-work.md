@@ -2,7 +2,7 @@
 
 ## 🎯 Overview
 
-Maiao implements a **stacked diffs** workflow for GitHub, GitLab, Gitea, Forgejo, and Bitbucket Cloud, inspired by Gerrit's code review model. It transforms your linear commit history into individual, stacked pull requests (or merge requests) where each commit is independently reviewable while maintaining proper dependencies.
+Maiao implements a **stacked diffs** workflow for GitHub, GitLab, Gitea, Forgejo, Bitbucket Cloud, and Cursor Origin, inspired by Gerrit's code review model. It transforms your linear commit history into individual, stacked pull requests (or merge requests) where each commit is independently reviewable while maintaining proper dependencies.
 
 ## 📚 Background: Stacked Diffs
 
@@ -389,7 +389,7 @@ PR #3 base unchanged: maiao.I222 (rebased)
 
 Maiao detects the provider from your remote URL (`pkg/provider/detect.go`):
 
-1. **Known hosts** — `github.com`, `gitlab.com`, `codeberg.org`, `bitbucket.org` are mapped automatically
+1. **Known hosts** — `github.com`, `gitlab.com`, `codeberg.org`, `bitbucket.org`, `origin.cursor.com` are mapped automatically
 2. **Git config** — reads `git config maiao.provider` for self-hosted instances
 3. **Interactive prompt** — if unknown, prompts the user to select a provider and saves to git config
 
@@ -397,9 +397,9 @@ Maiao detects the provider from your remote URL (`pkg/provider/detect.go`):
 
 For each provider, Maiao tries credentials in order (`pkg/credentials/provider.go`):
 
-1. **Environment variable** — `GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITEA_TOKEN`, `FORGEJO_TOKEN`, or `BITBUCKET_TOKEN` (+ `BITBUCKET_USERNAME`)
+1. **Environment variable** — `GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITEA_TOKEN`, `FORGEJO_TOKEN`, `BITBUCKET_TOKEN` (+ `BITBUCKET_USERNAME`), or `ORIGIN_TOKEN`
 2. **Netrc** — `~/.netrc` machine entries
-3. **Git credential helpers** — whatever `git credential fill` returns
+3. **Git credential helpers** — whatever `git credential fill` returns (used by Cursor Origin's `origin auth login`)
 4. **System keychain** — macOS Keychain, pass, etc. (experimental)
 
 ### WIP/Draft Handling
@@ -409,6 +409,7 @@ Each provider handles work-in-progress differently:
 - **GitLab** — prefixes title with `Draft: `
 - **Gitea/Forgejo** — prefixes title with `WIP: `
 - **Bitbucket** — no draft support (logs a warning)
+- **Cursor Origin** — sets `draft: true` via the API
 
 Maiao strips `WIP:`/`Draft:` from commit titles, detects the intent, and lets each provider apply it in its own way.
 
@@ -477,8 +478,9 @@ Each provider implements this interface:
 - **Gitea** (`pkg/gitea/`) — REST v1 API with `Authorization: token` header
 - **Forgejo** (`pkg/forgejo/`) — embeds Gitea's base client
 - **Bitbucket Cloud** (`pkg/bitbucket/`) — REST 2.0 API with basic auth
+- **Cursor Origin** (`pkg/origin/`) — REST API with Bearer token auth; supports native stacking via `parentPullNumber`
 
-The `BodyFormatter` interface controls how PR body sections are rendered: HTML `<details>` for GitHub/GitLab/Gitea/Forgejo, Markdown headings for Bitbucket.
+The `BodyFormatter` interface controls how PR body sections are rendered: HTML `<details>` for GitHub/GitLab/Gitea/Forgejo/Origin, Markdown headings for Bitbucket.
 
 ### Force Push Strategy
 

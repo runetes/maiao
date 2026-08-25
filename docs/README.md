@@ -6,7 +6,7 @@
 
 > **Note:** This is a community fork of [adevinta/maiao](https://github.com/adevinta/maiao). The original maintainers are no longer at Adevinta and the upstream repository is no longer actively maintained. This fork continues development under [runetes/maiao](https://github.com/runetes/maiao).
 
-**Gerrit-style code review workflow for GitHub, GitLab, Gitea, Forgejo, and Bitbucket Cloud**
+**Gerrit-style code review workflow for GitHub, GitLab, Gitea, Forgejo, Bitbucket Cloud, and Cursor Origin**
 
 Maiao brings the power of **stacked pull requests** (or merge requests) to your git hosting provider, enabling you to break large features into small, reviewable commits where each commit becomes its own PR/MR.
 
@@ -31,8 +31,9 @@ Maiao provides the `git review` command that:
 | Gitea | Pull Request | `WIP:` title prefix | No |
 | Forgejo/Codeberg | Pull Request | `WIP:` title prefix | No |
 | Bitbucket Cloud | Pull Request | Not supported | No |
+| Cursor Origin (beta) | Pull Request | API field | Yes (`parentPullNumber`) |
 
-Maiao auto-detects the provider from your remote URL for known hosts (`github.com`, `gitlab.com`, `codeberg.org`, `bitbucket.org`). For self-hosted instances, it prompts on first use and saves the choice to `git config maiao.provider`.
+Maiao auto-detects the provider from your remote URL for known hosts (`github.com`, `gitlab.com`, `codeberg.org`, `bitbucket.org`, `origin.cursor.com`). For self-hosted instances, it prompts on first use and saves the choice to `git config maiao.provider`.
 
 ## Quick Example
 
@@ -61,7 +62,7 @@ git review
 - **Native Stacks**: Integrates with GitHub Stacks and GitLab's auto-detected stacks
 - **Merge Detection**: Stack updates automatically when PRs/MRs merge
 - **Rebase Integration**: Handles upstream changes gracefully
-- **Multi-Provider**: Works across GitHub, GitLab, Gitea, Forgejo, and Bitbucket Cloud
+- **Multi-Provider**: Works across GitHub, GitLab, Gitea, Forgejo, Bitbucket Cloud, and Cursor Origin
 
 ## Native GitHub Stacks
 
