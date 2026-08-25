@@ -414,6 +414,9 @@ func defaultBranchOption(ctx context.Context, repo lgit.Repository, prAPI api.Pu
 			options.Branch = prAPI.DefaultBranch(ctx)
 		}
 		if options.Branch == "" {
+			options.Branch = remoteDefaultBranch(repo, options.Remote)
+		}
+		if options.Branch == "" {
 			options.Branch = "master"
 		}
 		if err != nil {
@@ -428,6 +431,23 @@ func defaultBranchOption(ctx context.Context, repo lgit.Repository, prAPI api.Pu
 			}
 		}
 	}
+}
+
+func remoteDefaultBranch(repo lgit.Repository, remoteName string) string {
+	if remoteName == "" {
+		remoteName = defaultRemote
+	}
+	wt, err := repo.Worktree()
+	if err != nil {
+		return ""
+	}
+	out, err := exec.Command("git", "-C", wt.Filesystem.Root(), "symbolic-ref", fmt.Sprintf("refs/remotes/%s/HEAD", remoteName)).Output()
+	if err != nil {
+		return ""
+	}
+	ref := strings.TrimSpace(string(out))
+	prefix := fmt.Sprintf("refs/remotes/%s/", remoteName)
+	return strings.TrimPrefix(ref, prefix)
 }
 
 func defaultRemoteOption(ctx context.Context, repo lgit.Repository, options *ReviewOptions) {

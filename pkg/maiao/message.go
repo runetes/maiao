@@ -9,63 +9,49 @@ import (
 	lgit "github.com/adevinta/maiao/pkg/git"
 )
 
-func details(body []string, summary string) []string {
-	r := []string{"<details>"}
-	if summary != "" {
-		r = append(r,
-			"<summary>",
-			summary,
-			"</summary>",
-		)
-	}
-	r = append(r, body...)
-	r = append(r, "</details>")
-	return r
-}
-
-func topicDetails(prAPI api.PullRequester, topic string) []string {
+func topicDetails(f api.BodyFormatter, prAPI api.PullRequester, topic string) []string {
 	sha := sha1.New()
 	sha.Write([]byte("topic: "))
 	sha.Write([]byte(topic))
 	topicSha := fmt.Sprintf("%x", sha.Sum(nil))
-	return details(
+	return f.Section(
+		"Broader related changes",
 		[]string{
 			"This change is part of a broader topic that can be in multiple repositories.",
-			"<br/>",
-			fmt.Sprintf(`Topic: <a href="%s" searchSha="%v">%s</a>`, prAPI.LinkedTopicIssues(topicSha), topicSha, topic),
+			f.LineBreak(),
+			fmt.Sprintf("Topic: %s", f.Link(prAPI.LinkedTopicIssues(topicSha), topic)),
 		},
-		"Broader related changes",
 	)
 }
 
-func committerDetails(branch string) []string {
-	return details([]string{"Local-Branch: " + branch}, "Committer details")
+func committerDetails(f api.BodyFormatter, branch string) []string {
+	return f.Section("Committer details", []string{"Local-Branch: " + branch})
 }
 
-func changeDetails(changes []*change) []string {
+func changeDetails(f api.BodyFormatter, changes []*change) []string {
 	r := []string{}
 	for _, change := range changes {
 		t := change.message.Title
 		if change.pr != nil {
-			t = fmt.Sprintf("%s (#%s)", t, change.pr.ID)
+			t = fmt.Sprintf("%s (%s)", t, f.Link(change.pr.URL, "#"+change.pr.ID))
 		}
-		r = append(r, details([]string{change.message.Body}, t)...)
+		r = append(r, f.Section(t, []string{change.message.Body})...)
 	}
 	return r
 }
 
-func relatedChanges(parents, futures []*change) []string {
+func relatedChanges(f api.BodyFormatter, parents, futures []*change) []string {
 	if len(parents) == 0 && len(futures) == 0 {
 		return []string{}
 	}
 	content := []string{}
 	if len(parents) > 0 {
-		content = append(content, details(changeDetails(parents), "Parent changes")...)
+		content = append(content, f.Section("Parent changes", changeDetails(f, parents))...)
 	}
 	if len(futures) > 0 {
-		content = append(content, details(changeDetails(futures), "Future changes")...)
+		content = append(content, f.Section("Future changes", changeDetails(f, futures))...)
 	}
-	return details(content, "Related changes")
+	return f.Section("Related changes", content)
 }
 
 func prOptions(repo lgit.Repository, prAPI api.PullRequester, options ReviewOptions, change *change, parents, futures []*change) api.PullRequestOptions {
@@ -82,17 +68,19 @@ func prOptions(repo lgit.Repository, prAPI api.PullRequester, options ReviewOpti
 			title = fmt.Sprintf("[need #%s] %s", change.parent.pr.ID, title)
 		}
 	}
+
+	f := prAPI.BodyFormatter()
 	additions := []string{}
 	head, err := repo.Head()
 	if err == nil {
-		additions = committerDetails(head.Name().Short())
+		additions = committerDetails(f, head.Name().Short())
 	}
 	additions = append(
 		additions,
-		relatedChanges(parents, futures)...,
+		relatedChanges(f, parents, futures)...,
 	)
 	if options.Topic != "" {
-		additions = append(additions, topicDetails(prAPI, options.Topic)...)
+		additions = append(additions, topicDetails(f, prAPI, options.Topic)...)
 	}
 
 	return api.PullRequestOptions{
