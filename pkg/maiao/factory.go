@@ -18,17 +18,20 @@ import (
 )
 
 func newPullRequester(ctx context.Context, remote *git.Remote, repoPath string) (api.PullRequester, error) {
+	var lastErr error
 	for _, u := range remote.Config().URLs {
 		ctx := log.WithContextFields(ctx, logrus.Fields{"remote-url": u})
 		endpoint, err := transport.NewEndpoint(u)
 		if err != nil {
 			log.ForContext(ctx).WithError(err).Errorf("failed to parse remote")
+			lastErr = err
 			continue
 		}
 
 		providerType, err := provider.Detect(endpoint.Host, repoPath)
 		if err != nil {
 			log.ForContext(ctx).WithError(err).Errorf("failed to detect provider")
+			lastErr = err
 			continue
 		}
 
@@ -37,6 +40,7 @@ func newPullRequester(ctx context.Context, remote *git.Remote, repoPath string) 
 			r, err := api.NewGitHubUpserter(ctx, endpoint)
 			if err != nil {
 				log.ForContext(ctx).WithError(err).Errorf("failed to instantiate github client")
+				lastErr = err
 				continue
 			}
 			return r, nil
@@ -44,6 +48,7 @@ func newPullRequester(ctx context.Context, remote *git.Remote, repoPath string) 
 			r, err := gitlab.NewGitLabUpserter(ctx, endpoint)
 			if err != nil {
 				log.ForContext(ctx).WithError(err).Errorf("failed to instantiate gitlab client")
+				lastErr = err
 				continue
 			}
 			return r, nil
@@ -51,6 +56,7 @@ func newPullRequester(ctx context.Context, remote *git.Remote, repoPath string) 
 			r, err := gitea.NewGiteaUpserter(ctx, endpoint)
 			if err != nil {
 				log.ForContext(ctx).WithError(err).Errorf("failed to instantiate gitea client")
+				lastErr = err
 				continue
 			}
 			return r, nil
@@ -58,6 +64,7 @@ func newPullRequester(ctx context.Context, remote *git.Remote, repoPath string) 
 			r, err := forgejo.NewForgejoUpserter(ctx, endpoint)
 			if err != nil {
 				log.ForContext(ctx).WithError(err).Errorf("failed to instantiate forgejo client")
+				lastErr = err
 				continue
 			}
 			return r, nil
@@ -65,12 +72,16 @@ func newPullRequester(ctx context.Context, remote *git.Remote, repoPath string) 
 			r, err := bitbucket.NewBitbucketUpserter(ctx, endpoint)
 			if err != nil {
 				log.ForContext(ctx).WithError(err).Errorf("failed to instantiate bitbucket client")
+				lastErr = err
 				continue
 			}
 			return r, nil
 		default:
 			return nil, fmt.Errorf("provider %q is not yet supported", providerType)
 		}
+	}
+	if lastErr != nil {
+		return nil, fmt.Errorf("failed to create provider client: %w", lastErr)
 	}
 	return nil, errors.New("no supported provider found for remote")
 }
