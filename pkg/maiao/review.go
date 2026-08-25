@@ -14,6 +14,7 @@ import (
 	lgit "github.com/adevinta/maiao/pkg/git"
 	"github.com/adevinta/maiao/pkg/log"
 	"github.com/adevinta/maiao/pkg/provider"
+	mssh "github.com/adevinta/maiao/pkg/ssh"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -99,13 +100,19 @@ func Review(ctx context.Context, repo lgit.Repository, options ReviewOptions) er
 	credGetter := credentials.CredentialGetterForProvider(string(providerType))
 
 	log.ForContext(ctx).Debugf("fetching remote")
-	err = remote.Fetch(&git.FetchOptions{
+	fetchOpts := &git.FetchOptions{
 		RemoteName: options.Remote,
 		Auth:       &credentials.GitAuth{Credentials: credGetter, Endpoint: endpoint},
-	})
+	}
+	err = remote.Fetch(fetchOpts)
 	if err != nil && err != git.NoErrAlreadyUpToDate {
-		log.ForContext(ctx).WithError(err).Error("failed to update git repository")
-		return err
+		if fixErr := handleSSHHostKeyError(err, endpoint.Host); fixErr == nil {
+			err = remote.Fetch(fetchOpts)
+		}
+		if err != nil && err != git.NoErrAlreadyUpToDate {
+			log.ForContext(ctx).WithError(err).Error("failed to update git repository")
+			return err
+		}
 	}
 	headRef := plumbing.Revision(plumbing.HEAD)
 	ctx = log.WithContextFields(ctx, logrus.Fields{
@@ -262,12 +269,18 @@ func sendPrs(ctx context.Context, repo lgit.Repository, options ReviewOptions, b
 	credGetter := credentials.CredentialGetterForProvider(string(providerType))
 
 	log.ForContext(ctx).WithField("refspec", refspecs).Debugf("pushing PR changes")
-	err = repo.Push(&git.PushOptions{
+	pushOpts := &git.PushOptions{
 		RemoteName: options.Remote,
 		RefSpecs:   refspecs,
 		Auth:       &credentials.GitAuth{Credentials: credGetter, Endpoint: endpoint},
 		Force:      true,
-	})
+	}
+	err = repo.Push(pushOpts)
+	if err != nil && err != git.NoErrAlreadyUpToDate {
+		if fixErr := handleSSHHostKeyError(err, endpoint.Host); fixErr == nil {
+			err = repo.Push(pushOpts)
+		}
+	}
 	if err != nil && err != git.NoErrAlreadyUpToDate {
 		return err
 	}
@@ -570,4 +583,15 @@ func extractChanges(ctx context.Context, repo lgit.Repository, base, head plumbi
 			}
 		}
 	}
+}
+
+func handleSSHHostKeyError(err error, endpointHost string) error {
+	host, isMismatch, ok := mssh.IsKnownHostsError(err)
+	if !ok {
+		return err
+	}
+	if host == "" {
+		host = endpointHost
+	}
+	return mssh.PromptAndFix(host, isMismatch)
 }
