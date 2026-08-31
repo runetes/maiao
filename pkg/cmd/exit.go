@@ -40,11 +40,49 @@ const (
 	ExitHostKeyMismatch = 5
 )
 
+// failureKinds names each status, so a caller matching on the word in the JSON
+// result and one matching on the exit status are branching on the same thing.
+//
+// Kept next to the statuses rather than beside the schema, so that adding a status
+// and forgetting to name it is a one-line change in one place.
+var failureKinds = map[int]string{
+	ExitFailure:          "error",
+	ExitAuth:             "auth",
+	ExitRebaseIncomplete: "rebase_incomplete",
+	ExitInputRequired:    "input_required",
+	ExitHostKeyMismatch:  "host_key_mismatch",
+}
+
+// newFailure describes err the way the JSON result reports it, or nil when there is
+// no failure to report.
+//
+// Code is taken from ExitCode rather than chosen here, so the status in the payload
+// is by construction the status the process exits with.
+func newFailure(err error) *maiao.Failure {
+	if err == nil {
+		return nil
+	}
+	code := ExitCode(err)
+	kind, ok := failureKinds[code]
+	if !ok {
+		// A status nobody named is still a failure, and reporting it as the generic one
+		// is better than reporting it as an empty string.
+		kind = failureKinds[ExitFailure]
+	}
+	return &maiao.Failure{Kind: kind, Code: code, Message: err.Error()}
+}
+
 // ExitCode classifies a failure so a caller can branch on it without parsing text.
 func ExitCode(err error) int {
+	var classified *maiao.Failure
 	switch {
 	case err == nil:
 		return ExitSuccess
+	// First, because a failure handed back from the run git rebase invoked has already
+	// been classified by that run. Reclassifying it from its message would turn a
+	// known status into a generic one.
+	case errors.As(err, &classified):
+		return classified.Code
 	// Ahead of ExitInputRequired, because a mismatch is the one prompt maiao refuses
 	// to let a caller configure away.
 	case errors.Is(err, mssh.ErrHostKeyMismatch):

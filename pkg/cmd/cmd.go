@@ -93,6 +93,7 @@ func NewCommand() *cobra.Command {
 	rootCmd.PersistentFlags().BoolP("ready", "W", false, "Mark the review as ready in compatible remotes (i.e. removing the work in progress or draft flag)")
 	rootCmd.PersistentFlags().Bool("batch", prompt.Batch(), "Never prompt, and fail with what to configure instead. Defaults to true when stdin is not a terminal")
 	rootCmd.PersistentFlags().Bool("trust-new-ssh-hosts", mssh.TrustNewHosts(), "Accept the SSH key of a host missing from known_hosts without asking. Never applies to a key mismatch. Also settable with "+mssh.TrustNewHostsEnvVar)
+	rootCmd.PersistentFlags().Bool("json", false, `Describe the reviewed changes as JSON on stdout. Diagnostics stay on stderr. A failed review still reports the changes it submitted, plus an "error" object naming the failure`)
 	installCmd := &cobra.Command{
 		Use:   "install",
 		Short: "Installs commit message hook to the repository",
