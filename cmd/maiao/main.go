@@ -11,6 +11,6 @@ func main() {
 	// stdout, showed every failure twice and put it on the stream reserved for
 	// output a caller parses.
 	if err := cmd.NewCommand().Execute(); err != nil {
-		os.Exit(1)
+		os.Exit(cmd.ExitCode(err))
 	}
 }

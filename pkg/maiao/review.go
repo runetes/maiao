@@ -105,15 +105,10 @@ func Review(ctx context.Context, repo lgit.Repository, options ReviewOptions) er
 		RemoteName: options.Remote,
 		Auth:       &credentials.GitAuth{Credentials: credGetter, Endpoint: endpoint},
 	}
-	err = remote.Fetch(fetchOpts)
+	err = retryAfterHostKeyFix(endpoint.Host, func() error { return remote.Fetch(fetchOpts) })
 	if err != nil && err != git.NoErrAlreadyUpToDate {
-		if fixErr := handleSSHHostKeyError(err, endpoint.Host); fixErr == nil {
-			err = remote.Fetch(fetchOpts)
-		}
-		if err != nil && err != git.NoErrAlreadyUpToDate {
-			log.ForContext(ctx).WithError(err).Error("failed to update git repository")
-			return err
-		}
+		log.ForContext(ctx).WithError(err).Error("failed to update git repository")
+		return err
 	}
 	headRef := plumbing.Revision(plumbing.HEAD)
 	ctx = log.WithContextFields(ctx, logrus.Fields{
@@ -227,12 +222,17 @@ func rebaseCommits(ctx context.Context, repo lgit.Repository, options ReviewOpti
 		return nil
 	}
 
-	err = lgit.RebaseCommits(ctx, repo, base, remoteHead, rebaseTODO(changes))
-	if err != nil {
-		return nil
+	if err := rebase(ctx, repo, base, remoteHead, rebaseTODO(changes)); err != nil {
+		// Reporting success here said the review was done when nothing had been
+		// submitted: git stops the rebase where it is, and the step that creates the
+		// reviews is the last one in the todo list, so it never ran.
+		return fmt.Errorf("%w: resolve it and run `git rebase --continue`: %w", ErrRebaseIncomplete, err)
 	}
 	return nil
 }
+
+// rebase is a seam so that tests do not need to provoke a real conflict.
+var rebase = lgit.RebaseCommits
 
 func sendPrs(ctx context.Context, repo lgit.Repository, options ReviewOptions, base, head plumbing.Hash) error {
 
@@ -276,12 +276,7 @@ func sendPrs(ctx context.Context, repo lgit.Repository, options ReviewOptions, b
 		Auth:       &credentials.GitAuth{Credentials: credGetter, Endpoint: endpoint},
 		Force:      true,
 	}
-	err = repo.Push(pushOpts)
-	if err != nil && err != git.NoErrAlreadyUpToDate {
-		if fixErr := handleSSHHostKeyError(err, endpoint.Host); fixErr == nil {
-			err = repo.Push(pushOpts)
-		}
-	}
+	err = retryAfterHostKeyFix(endpoint.Host, func() error { return repo.Push(pushOpts) })
 	if err != nil && err != git.NoErrAlreadyUpToDate {
 		return err
 	}
@@ -591,6 +586,30 @@ func extractChanges(ctx context.Context, repo lgit.Repository, base, head plumbi
 	}
 }
 
+// retryAfterHostKeyFix runs op, and when it fails over an SSH host key, tries to
+// resolve that and runs op once more.
+//
+// A fix that does not succeed replaces op's error, because it is the actionable
+// one: go-git reports only that the key did not match, while the fix attempt says
+// what to do about it, and in batch mode that message is the entire diagnostic.
+// Dropping it left the caller with nothing to act on.
+func retryAfterHostKeyFix(host string, op func() error) error {
+	err := op()
+	if err == nil || err == git.NoErrAlreadyUpToDate {
+		return err
+	}
+	if fixErr := fixHostKey(err, host); fixErr != nil {
+		return fixErr
+	}
+	return op()
+}
+
+// fixHostKey is a seam so that tests can exercise the retry without a host they can
+// actually reach.
+var fixHostKey = handleSSHHostKeyError
+
+// handleSSHHostKeyError returns err unchanged when it is not about a host key, so
+// that only host key problems are given a second attempt.
 func handleSSHHostKeyError(err error, endpointHost string) error {
 	host, isMismatch, ok := mssh.IsKnownHostsError(err)
 	if !ok {

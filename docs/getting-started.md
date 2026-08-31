@@ -207,6 +207,26 @@ reserved for output meant to be read by a program. Redirecting stderr away is
 therefore safe for a script, and `2>&1` is what you want when you are reading it
 yourself.
 
+### Exit statuses
+
+Maiao distinguishes failures it expects a caller to handle differently:
+
+| Status | Meaning | What to do |
+|---|---|---|
+| 0 | The review completed | Nothing. Zero changes is also a success |
+| 1 | Any other failure | Read stderr |
+| 2 | No usable credentials, or the host rejected them | Provide a token; retrying changes nothing |
+| 3 | The rebase stopped before the reviews were created | Resolve the conflict and `git rebase --continue`, which finishes the review |
+| 4 | An answer was needed and there was no terminal to ask on | Apply the setting the message names |
+| 5 | The host presented a different SSH key than the one on record | Stop. See [SSH host key error](#ssh-host-key-error) |
+
+Non-zero still means failure, so `if ! git review` keeps working.
+
+Status 3 is worth knowing about even interactively: `git review` rebases before
+submitting, and if that rebase stops there is nothing on the remote yet. The
+reviews are created by the step git runs at the end of the rebase, so finishing the
+rebase is what completes them.
+
 ### Configuring away the prompts
 
 Set these once and Maiao runs unattended:
@@ -617,6 +637,26 @@ ssh-keygen -R git.example.com -f ~/.ssh/known_hosts
 Pass `-f` explicitly: `ssh-keygen` locates your home directory through the passwd
 database and ignores `$HOME`, so without it you may edit a different file than the
 one Maiao reads.
+
+A mismatch exits with status 5, kept separate from every other failure precisely so
+an automated caller stops rather than retries.
+
+### "the rebase did not complete"
+
+**Problem:** `git review` rebases your commits before submitting them, and that
+rebase stopped — a conflict, usually. Nothing has been pushed.
+
+**Solution:**
+```bash
+git status              # see what conflicts
+# resolve the conflicts, then
+git add <files>
+git rebase --continue
+```
+
+Finishing the rebase creates the reviews: Maiao adds itself as the last step of the
+rebase, so it runs once the rebase gets there. You do not need to run `git review`
+again. This exits with status 3.
 
 ### "reference not found"
 
