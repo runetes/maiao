@@ -64,6 +64,60 @@ func TestExitCode(t *testing.T) {
 	}
 }
 
+// TestFailureIsClassifiedForBothReaders keeps the JSON and the exit status telling
+// the same story, so a caller matching on `error.kind` and one matching on the
+// status cannot reach different conclusions.
+func TestFailureIsClassifiedForBothReaders(t *testing.T) {
+	for name, tc := range map[string]struct {
+		err  error
+		kind string
+		code int
+	}{
+		"an error with no classification": {err: errors.New("boom"), kind: "error", code: ExitFailure},
+		"no credentials for the host":     {err: noCredentials(t), kind: "auth", code: ExitAuth},
+		"credentials the host refused":    {err: transport.ErrAuthorizationFailed, kind: "auth", code: ExitAuth},
+		"a rebase that stopped":           {err: maiao.ErrRebaseIncomplete, kind: "rebase_incomplete", code: ExitRebaseIncomplete},
+	} {
+		t.Run(name, func(t *testing.T) {
+			failure := newFailure(tc.err)
+
+			require.NotNil(t, failure)
+			assert.Equal(t, tc.kind, failure.Kind)
+			assert.Equal(t, tc.code, failure.Code)
+			assert.Equal(t, ExitCode(tc.err), failure.Code, "the reported code must be the status the process exits with")
+			assert.Equal(t, tc.err.Error(), failure.Message)
+		})
+	}
+}
+
+// TestEveryStatusIsNamed guards the pairing itself: a status added without a name
+// would be reported as a generic error, which is the one thing `kind` exists to
+// avoid.
+func TestEveryStatusIsNamed(t *testing.T) {
+	for _, code := range []int{ExitFailure, ExitAuth, ExitRebaseIncomplete, ExitInputRequired, ExitHostKeyMismatch} {
+		assert.NotEmpty(t, failureKinds[code], "status %d has no name", code)
+	}
+	assert.Len(t, failureKinds, 5, "a new status needs a name here too")
+}
+
+// TestSuccessHasNoFailure is what keeps `error` absent from a successful result,
+// which is what makes the key additive for callers already parsing `changes`.
+func TestSuccessHasNoFailure(t *testing.T) {
+	assert.Nil(t, newFailure(nil))
+}
+
+// TestAClassifiedFailureKeepsItsStatus covers the error a nested run hands back
+// across the rebase boundary.
+//
+// It arrives as data rather than as the sentinel it started as, so classifying it
+// from its message would demote a known status to the generic one.
+func TestAClassifiedFailureKeepsItsStatus(t *testing.T) {
+	handedBack := &maiao.Failure{Kind: "auth", Code: ExitAuth, Message: "unable to find token for api.github.com"}
+
+	assert.Equal(t, ExitAuth, ExitCode(handedBack))
+	assert.Equal(t, ExitAuth, ExitCode(fmt.Errorf("wrapped: %w", handedBack)))
+}
+
 // TestExitCodeForBatchModeFailure classifies the error the real batch-mode path
 // produces, rather than a stand-in for it.
 func TestExitCodeForBatchModeFailure(t *testing.T) {

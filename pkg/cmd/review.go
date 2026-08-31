@@ -23,10 +23,28 @@ const (
 )
 
 func review(cmd *cobra.Command, args []string) error {
+	jsonOutput := cmd.Flag("json").Value.String() == "true"
+	// Before anything that can fail, so that every failure is reported the same way,
+	// and before Review, which is what starts the rebase whose final step re-runs
+	// maiao — that run finds the handoff through the environment.
+	handoff, err := newResultHandoff(jsonOutput)
+	if err != nil {
+		return err
+	}
+	defer handoff.cleanup()
+	result, err := runReview(cmd, args)
+	return emitResult(os.Stdout, handoff, jsonOutput, result, err)
+}
+
+// runReview does the review itself, leaving its caller to report the outcome.
+//
+// Split out so that reporting is on one path rather than at every return: a failure
+// that goes unreported is one a caller reading stdout cannot see at all.
+func runReview(cmd *cobra.Command, args []string) (*maiao.Result, error) {
 	path := cmd.Flag("path").Value.String()
 	repo, err := git.PlainOpenWithOptions(path, &git.PlainOpenOptions{DetectDotGit: true})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	branch := ""
 	if len(args) > 0 {
@@ -34,14 +52,16 @@ func review(cmd *cobra.Command, args []string) error {
 	}
 	gitDir, err := lgit.FindGitDir(path)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	proceed, err := ensureCommitMsgHook(path, gitDir)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	// A declined install is a decision, not a failure, so it still reports a
+	// result: an empty one, rather than nothing at all for a caller to parse.
 	if !proceed {
-		return nil
+		return &maiao.Result{}, nil
 	}
 	return maiao.Review(context.Background(), repo, maiao.ReviewOptions{
 		RepoPath:       path,

@@ -227,6 +227,86 @@ submitting, and if that rebase stops there is nothing on the remote yet. The
 reviews are created by the step git runs at the end of the rebase, so finishing the
 rebase is what completes them.
 
+### Machine-readable results
+
+`--json` prints what the review did to stdout, and nothing else:
+
+```bash
+git review --json
+```
+
+```json
+{
+  "changes": [
+    {
+      "change_id": "I8f3c2a1b5e9d7f6a4c3b2a1d0e9f8c7b6a5d4e3f",
+      "branch": "maiao.I8f3c2a1b5e9d7f6a4c3b2a1d0e9f8c7b6a5d4e3f",
+      "url": "https://github.com/org/repo/pull/101",
+      "id": "101",
+      "status": "created"
+    }
+  ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `changes[].change_id` | The `Change-Id` trailer, stable across rebases and amends, so it correlates entries between runs |
+| `changes[].branch` | The remote branch the commit was pushed to |
+| `changes[].url` | The pull or merge request as a person would open it |
+| `changes[].id` | The provider's identifier — the number shown in its web interface. A string, because a provider is not obliged to use integers |
+| `changes[].status` | `created` or `updated` |
+| `stack_id` | The stack the provider recorded, for providers that model one natively. Absent otherwise |
+| `error` | Why the review did not complete. **Absent when it did** |
+
+`changes` is ordered as the pull requests are stacked, so the first entry targets
+your branch and each later one targets the entry before it. A run with nothing to
+review prints `{"changes": []}`.
+
+#### Failures
+
+A failed review still prints its result, because a review can fail after it has
+already created some of the pull requests — those exist, and a caller that cannot
+see them has no way to tell whether a retry is resuming or starting over.
+
+```json
+{
+  "changes": [
+    {
+      "change_id": "I8f3c2a1b5e9d7f6a4c3b2a1d0e9f8c7b6a5d4e3f",
+      "branch": "maiao.I8f3c2a1b5e9d7f6a4c3b2a1d0e9f8c7b6a5d4e3f",
+      "url": "https://github.com/org/repo/pull/101",
+      "id": "101",
+      "status": "created"
+    }
+  ],
+  "error": {
+    "kind": "auth",
+    "code": 2,
+    "message": "unable to find token for api.github.com"
+  }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `kind` | The failure class: `error`, `auth`, `rebase_incomplete`, `input_required` or `host_key_mismatch` |
+| `code` | The process's [exit status](#exit-statuses). The two are the same by construction, so they cannot disagree |
+| `message` | The same diagnostic that appears on stderr |
+
+So a review that ran prints `error` exactly when it exits non-zero, and either is
+enough to branch on:
+
+```bash
+result=$(git review --json)
+echo "$result" | jq -r '.changes[].url'   # whatever was submitted, success or not
+echo "$result" | jq -e -r '.error.kind // empty' && exit 1
+```
+
+One exception: an invalid command line — an unknown flag, too many arguments — is
+answered with usage on stderr and no JSON, because there was no review to report
+on. Treat empty stdout with a non-zero status as that case.
+
 ### Configuring away the prompts
 
 Set these once and Maiao runs unattended:
