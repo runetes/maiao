@@ -87,7 +87,9 @@ func RebaseCommits(ctx context.Context, repo Repository, base, onto plumbing.Has
 	}
 
 	c := exec.Command("git", "-C", wt.Filesystem.Root(), "rebase", "-i", "--onto", onto.String(), base.String())
-	c.Stdout = os.Stdout
+	// Rebase progress is diagnostics, and this command re-invokes maiao as its last
+	// todo step, so whatever stream it gets is also the nested run's stdout.
+	c.Stdout = os.Stderr
 	c.Stderr = os.Stderr
 	c.Stdin = os.Stdin
 	args, err := json.Marshal(os.Args[1:])

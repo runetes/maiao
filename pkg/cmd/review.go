@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/go-git/go-git/v5"
@@ -81,7 +82,7 @@ from now on, or `+"`git review install`"+` for this one only.
 Expected at %s`, prompt.ErrNoInput, hookPath)
 		}
 		if !confirm(hookMissing) {
-			fmt.Printf(noAutoInstallHookFmt+"\n", filepath.Dir(hookPath), hookPath, gerrit.HookURL())
+			fmt.Fprintf(os.Stderr, noAutoInstallHookFmt+"\n", filepath.Dir(hookPath), hookPath, gerrit.HookURL())
 			return false, nil
 		}
 	}
