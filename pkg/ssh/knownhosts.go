@@ -1,6 +1,7 @@
 package ssh
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -24,21 +25,79 @@ func IsKnownHostsError(err error) (host string, isMismatch bool, ok bool) {
 	return "", false, false
 }
 
+// TrustNewHostsEnvVar opts in to accepting the key of a host that is not yet in
+// known_hosts without asking. It has no effect on a key mismatch.
+const TrustNewHostsEnvVar = "MAIAO_TRUST_NEW_SSH_HOSTS"
+
+// ErrHostKeyMismatch reports that the key a host presented differs from the one
+// recorded in known_hosts.
+var ErrHostKeyMismatch = errors.New("SSH host key mismatch")
+
+var trustNewHosts = envIsTrue(TrustNewHostsEnvVar)
+
+// SetTrustNewHosts opts in to trusting the key of an unknown host on first use,
+// overriding the environment variable.
+func SetTrustNewHosts(b bool) {
+	trustNewHosts = b
+}
+
+// TrustNewHosts reports whether the key of an unknown host is accepted without
+// asking.
+func TrustNewHosts() bool {
+	return trustNewHosts
+}
+
+func envIsTrue(name string) bool {
+	switch strings.ToLower(os.Getenv(name)) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
+
+// PromptAndFix resolves an SSH host key problem, asking the user first.
+//
+// The two problems it is given are not equally safe to resolve, and are handled
+// separately on purpose.
+//
+// A key that is merely unknown is trust on first use: the same exposure as any
+// first connection to a host, which SSH itself resolves by asking. It can be
+// accepted without a question, but only when the user has explicitly opted in.
+//
+// A key mismatch means the recorded key and the presented key disagree. That
+// happens when a server is legitimately rekeyed, and equally when a connection
+// is being intercepted, and the two are indistinguishable from here. Resolving
+// it means deleting a key that was known to be good, so it is never done without
+// a person saying so, whatever the opt-in says.
 func PromptAndFix(host string, isMismatch bool) error {
-	var question string
 	if isMismatch {
-		question = fmt.Sprintf("SSH host key mismatch for %s (the server's key has changed). Update it?", host)
-	} else {
-		question = fmt.Sprintf("SSH host key not found for %s. Add it automatically?", host)
-	}
-
-	if !prompt.YesNo(question) {
-		return fmt.Errorf("SSH host key issue for %s not resolved", host)
-	}
-
-	if isMismatch {
+		if prompt.Batch() {
+			// The path is spelled out with -f because ssh-keygen resolves the home
+			// directory from the passwd database, so a bare -R can edit a different
+			// file than the one maiao reads.
+			return fmt.Errorf(`%w for %s.
+The key on record is not the key the server presented. The server may have been
+rekeyed, or the connection may be intercepted, and maiao cannot tell which.
+Verify the new key through a channel you trust, then forget the old one with
+`+"`ssh-keygen -R %s -f %s`"+`.
+%s has been left untouched`, ErrHostKeyMismatch, host, host, knownHostsPath(), knownHostsPath())
+		}
+		if !prompt.YesNo(fmt.Sprintf("SSH host key mismatch for %s (the server's key has changed). Update it?", host)) {
+			return fmt.Errorf("%w for %s, not resolved", ErrHostKeyMismatch, host)
+		}
 		if err := removeHostKeys(host); err != nil {
 			return fmt.Errorf("failed to remove old host keys: %w", err)
+		}
+	} else if !trustNewHosts {
+		if prompt.Batch() {
+			return fmt.Errorf(`%w: no key for %s on record.
+Record it when building the environment, with
+`+"`ssh-keyscan %s >> %s`"+`,
+or set %s=1 to trust whichever key %s offers on first use`,
+				prompt.ErrNoInput, host, host, knownHostsPath(), TrustNewHostsEnvVar, host)
+		}
+		if !prompt.YesNo(fmt.Sprintf("SSH host key not found for %s. Add it automatically?", host)) {
+			return fmt.Errorf("SSH host key issue for %s not resolved", host)
 		}
 	}
 
