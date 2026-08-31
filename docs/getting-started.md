@@ -66,10 +66,18 @@ Maiao auto-detects your provider from the remote URL for known hosts:
 - `bitbucket.org` → Bitbucket Cloud
 - `origin.cursor.com` → Cursor Origin
 
-For self-hosted instances, Maiao prompts you on first use and saves the choice:
+For self-hosted instances, Maiao prompts you on first use and saves the choice to
+the repository:
 
 ```bash
 git config maiao.provider gitlab  # or: github, gitea, forgejo, bitbucket, origin
+```
+
+If you work across several repositories on the same self-hosted host, set it once
+globally instead and every repository will pick it up:
+
+```bash
+git config --global maiao.provider gitlab
 ```
 
 ### Authentication
@@ -179,6 +187,56 @@ git review
 ```
 
 Supported keychains: [99designs/keyring](https://pkg.go.dev/github.com/99designs/keyring)
+
+## 🤖 Non-interactive use
+
+CI jobs, scripts and coding agents run Maiao with nobody available to answer a
+question. Maiao detects this — when stdin is not a terminal it enters **batch
+mode**, where it never prompts. Instead of asking, it fails and names the setting
+that would have made the question unnecessary.
+
+Force it either way with `--batch` / `--batch=false`.
+
+Batch mode only changes what happens *instead of* a prompt. It does not skip any
+verification, and it does not make Maiao assume an answer.
+
+### Configuring away the prompts
+
+Set these once and Maiao runs unattended:
+
+```bash
+# Install the commit-msg hook everywhere, without ever asking
+git review install --global
+
+# Say what a self-hosted host is, for every repository at once
+git config --global maiao.provider gitlab
+
+# Provide credentials (see Authentication above)
+export GITHUB_TOKEN=...
+```
+
+### Host keys
+
+Record the host keys when you build the image or sandbox, not when you run a
+review:
+
+```dockerfile
+RUN mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
+```
+
+Doing it at build time means the key is fixed by someone who can verify it, and
+every later run compares against it.
+
+If you cannot pre-seed, `--trust-new-ssh-hosts` (or
+`MAIAO_TRUST_NEW_SSH_HOSTS=1`) lets Maiao accept the key of a host it has no
+record of. This is trust on first use: you are trusting whichever key answers.
+It is off by default.
+
+Neither the flag nor the environment variable has any effect when the key
+**changed** rather than being unknown. A changed key is indistinguishable from an
+interception, and resolving it means discarding a key that was known to be good,
+so Maiao always fails and leaves `known_hosts` untouched. Resolve it yourself as
+described under [SSH host key error](#ssh-host-key-error).
 
 ## 🚀 First Time Setup
 
@@ -530,9 +588,28 @@ export BITBUCKET_TOKEN=your-app-password
 
 ### SSH host key error
 
-**Problem:** SSH host key not found or has changed (common when connecting to a new provider for the first time)
+**Problem:** SSH host key not found, or the key has changed.
 
-**Solution:** Maiao will automatically prompt you to resolve this via `ssh-keyscan`. Accept the prompt to add the host key.
+These are two different problems and Maiao treats them differently.
+
+**Key not found** is normal the first time you connect to a host. Maiao offers to
+add it with `ssh-keyscan`; accept the prompt. In batch mode it refuses instead,
+because fetching a key over the network and trusting it unattended is exactly what
+an interception needs — see [Non-interactive use](#-non-interactive-use).
+
+**Key changed** means the host presented a different key than the one on record.
+That happens when a server is legitimately rekeyed, and equally when the
+connection is being intercepted, and Maiao cannot tell the two apart. It never
+resolves this on its own. Verify the new key through a channel you trust — your
+provider's documentation or status page — then drop the old one:
+
+```bash
+ssh-keygen -R git.example.com -f ~/.ssh/known_hosts
+```
+
+Pass `-f` explicitly: `ssh-keygen` locates your home directory through the passwd
+database and ignores `$HOME`, so without it you may edit a different file than the
+one Maiao reads.
 
 ### "reference not found"
 

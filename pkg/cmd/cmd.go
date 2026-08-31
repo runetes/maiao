@@ -9,6 +9,8 @@ import (
 	"github.com/99designs/keyring"
 	"github.com/adevinta/maiao/pkg/git"
 	"github.com/adevinta/maiao/pkg/log"
+	"github.com/adevinta/maiao/pkg/prompt"
+	mssh "github.com/adevinta/maiao/pkg/ssh"
 	"github.com/adevinta/maiao/pkg/version"
 
 	"github.com/sirupsen/logrus"
@@ -46,6 +48,8 @@ func NewCommand() *cobra.Command {
 			default:
 				return fmt.Errorf("unexpected log level %s expecting 0-5", cmd.Flag("verbose").Value.String())
 			}
+			prompt.SetBatch(cmd.Flag("batch").Value.String() == "true")
+			mssh.SetTrustNewHosts(cmd.Flag("trust-new-ssh-hosts").Value.String() == "true")
 			return nil
 		},
 		Args: func(cmd *cobra.Command, args []string) error {
@@ -87,6 +91,8 @@ func NewCommand() *cobra.Command {
 	rootCmd.PersistentFlags().String("remote", "", "Specifies the remote the review should be done on. By default the tracking remote of the target branch is used")
 	rootCmd.PersistentFlags().BoolP("work-in-progress", "w", false, "Mark the review as work in progress, or draft in compatible remotes. This flag is exclusively effective when creating Pull Requests")
 	rootCmd.PersistentFlags().BoolP("ready", "W", false, "Mark the review as ready in compatible remotes (i.e. removing the work in progress or draft flag)")
+	rootCmd.PersistentFlags().Bool("batch", prompt.Batch(), "Never prompt, and fail with what to configure instead. Defaults to true when stdin is not a terminal")
+	rootCmd.PersistentFlags().Bool("trust-new-ssh-hosts", mssh.TrustNewHosts(), "Accept the SSH key of a host missing from known_hosts without asking. Never applies to a key mismatch. Also settable with "+mssh.TrustNewHostsEnvVar)
 	installCmd := &cobra.Command{
 		Use:   "install",
 		Short: "Installs commit message hook to the repository",
