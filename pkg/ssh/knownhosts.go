@@ -49,15 +49,31 @@ func PromptAndFix(host string, isMismatch bool) error {
 	return nil
 }
 
+// knownHostsPath is the file both removeHostKeys and addHostKeys operate on.
+//
+// It has to be resolved once and passed explicitly: ssh-keygen derives the home
+// directory from the passwd database and ignores HOME, so leaving it implicit
+// makes the two functions disagree about which file they are editing whenever
+// HOME is overridden, as it is in containers, CI and agent sandboxes.
+func knownHostsPath() string {
+	return filepath.Join(os.Getenv("HOME"), ".ssh", "known_hosts")
+}
+
 func removeHostKeys(host string) error {
-	cmd := exec.Command("ssh-keygen", "-R", host)
+	path := knownHostsPath()
+	// ssh-keygen exits non-zero when handed a path it cannot stat, so skip it
+	// rather than report a failure: no file means there is no key to remove.
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil
+	}
+	cmd := exec.Command("ssh-keygen", "-R", host, "-f", path)
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
 
 func addHostKeys(host string) error {
-	knownHostsPath := filepath.Join(os.Getenv("HOME"), ".ssh", "known_hosts")
+	knownHostsPath := knownHostsPath()
 
 	if err := os.MkdirAll(filepath.Dir(knownHostsPath), 0700); err != nil {
 		return err
