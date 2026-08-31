@@ -87,13 +87,19 @@ func NewCommand() *cobra.Command {
 	rootCmd.PersistentFlags().String("remote", "", "Specifies the remote the review should be done on. By default the tracking remote of the target branch is used")
 	rootCmd.PersistentFlags().BoolP("work-in-progress", "w", false, "Mark the review as work in progress, or draft in compatible remotes. This flag is exclusively effective when creating Pull Requests")
 	rootCmd.PersistentFlags().BoolP("ready", "W", false, "Mark the review as ready in compatible remotes (i.e. removing the work in progress or draft flag)")
+	installCmd := &cobra.Command{
+		Use:   "install",
+		Short: "Installs commit message hook to the repository",
+		Long: `Installs commit message hook to the repository.
+
+With --global, installs it for every repository instead: new and cloned
+repositories get it from git through init.templateDir, and existing ones get it
+the first time you run git review in them, without being asked.`,
+		RunE: install,
+	}
+	installCmd.Flags().Bool("global", false, "Install the hook for every repository rather than only this one")
 	rootCmd.AddCommand(
-		&cobra.Command{
-			Use:   "install",
-			Short: "Installs commit message hook to the repository",
-			Long:  `Installs commit message hook to the repository`,
-			RunE:  install,
-		},
+		installCmd,
 		&cobra.Command{
 			Use:   "version",
 			Short: "Installs commit message hook to the repository",

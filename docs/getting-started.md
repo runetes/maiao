@@ -193,6 +193,29 @@ git review install
 
 This installs a Git hook that automatically adds a unique `Change-Id` to every commit message.
 
+To install it once for every repository instead, so you are never asked again:
+
+```bash
+git review install --global
+```
+
+This sets two things in your global Git config:
+
+| Setting | Effect |
+|---|---|
+| `init.templateDir` | Git copies the hook into every repository you create or clone from now on |
+| `maiao.autoInstallHook` | `git review` installs the hook itself, without asking, in repositories that already exist |
+
+Both are additive. `init.templateDir` does not redirect your hooks directory, so
+repositories with their own hooks, and tools such as husky, lefthook or
+pre-commit, keep working. If you already point `init.templateDir` at your own
+template, maiao adds the hook to it rather than replacing the setting.
+
+Worktrees need nothing extra: they share the main repository's hooks.
+
+This is the recommended setup for CI and for AI agents, which create
+repositories and worktrees often and cannot answer an interactive prompt.
+
 ### 2. Verify Installation
 
 Check that the hook is installed:
