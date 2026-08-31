@@ -50,6 +50,14 @@ func NewCommand() *cobra.Command {
 			}
 			prompt.SetBatch(cmd.Flag("batch").Value.String() == "true")
 			mssh.SetTrustNewHosts(cmd.Flag("trust-new-ssh-hosts").Value.String() == "true")
+			// From here on a failure is a runtime one, and the flag list says nothing
+			// useful about it. Printing it buried the message that did, which matters
+			// most where that message is the entire diagnostic: batch mode.
+			//
+			// Set here rather than on the command, so a genuine misuse — an unknown flag,
+			// too many arguments, a bad verbosity — is still answered with usage. Cobra
+			// validates arguments before this runs.
+			cmd.Root().SilenceUsage = true
 			return nil
 		},
 		Args: func(cmd *cobra.Command, args []string) error {
