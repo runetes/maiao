@@ -31,7 +31,7 @@ func (k Keyring) CredentialForHost(h string) (*Credentials, error) {
 		prompt := promptui.Prompt{
 			Label:  fmt.Sprintf("username for %s", h),
 			Stdin:  os.Stdin,
-			Stdout: os.Stdout,
+			Stdout: os.Stderr,
 		}
 		creds.Username, err = prompt.Run()
 		if err != nil {
@@ -41,7 +41,7 @@ func (k Keyring) CredentialForHost(h string) (*Credentials, error) {
 			Label:  fmt.Sprintf("password for %s (usually your Personal Access Token)", h),
 			Mask:   '*',
 			Stdin:  os.Stdin,
-			Stdout: os.Stdout,
+			Stdout: os.Stderr,
 		}
 		creds.Password, err = prompt.Run()
 		if err != nil {

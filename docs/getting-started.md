@@ -200,6 +200,13 @@ Force it either way with `--batch` / `--batch=false`.
 Batch mode only changes what happens *instead of* a prompt. It does not skip any
 verification, and it does not make Maiao assume an answer.
 
+### Output streams
+
+Diagnostics — progress, prompts, guidance and errors — go to **stderr**. stdout is
+reserved for output meant to be read by a program. Redirecting stderr away is
+therefore safe for a script, and `2>&1` is what you want when you are reading it
+yourself.
+
 ### Configuring away the prompts
 
 Set these once and Maiao runs unattended:
