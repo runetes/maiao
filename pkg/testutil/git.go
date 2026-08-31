@@ -38,6 +38,14 @@ func CmdOutput(t testing.TB, cmd string, args ...string) string {
 	return strings.Trim(b.String(), " \n")
 }
 
+// CmdCombinedOutput runs a command and returns its output and error, for tests
+// that assert on what a command printed even when it may fail. Hook output lands
+// on standard error, so both streams are captured.
+func CmdCombinedOutput(cmd string, args ...string) (string, error) {
+	out, err := exec.Command(cmd, args...).CombinedOutput()
+	return string(out), err
+}
+
 // CommitFile writes content to path inside dir and commits it, returning the
 // resulting commit hash.
 func CommitFile(t testing.TB, dir, path, content, message string) string {
@@ -83,12 +91,12 @@ func IsolateHome(t testing.TB) string {
 func InitRepo(t testing.TB) string {
 	t.Helper()
 	dir := t.TempDir()
-	Cmd(t, "git", "init", dir)
+	Cmd(t, "git", "-c", "init.defaultBranch=main", "init", "-q", dir)
 	// Do not depend on whatever the developer or CI has configured.
 	Cmd(t, "git", "-C", dir, "config", "user.name", "maiao tests")
 	Cmd(t, "git", "-C", dir, "config", "user.email", "maiao-tests@example.com")
 	Cmd(t, "git", "-C", dir, "config", "commit.gpgsign", "false")
-	Cmd(t, "git", "-C", dir, "commit", "--allow-empty", "-m", "initial commit")
+	Cmd(t, "git", "-C", dir, "commit", "-q", "--allow-empty", "-m", "initial commit")
 	return CmdOutput(t, "git", "-C", dir, "rev-parse", "--show-toplevel")
 }
 
@@ -97,7 +105,7 @@ func InitRepo(t testing.TB) string {
 func AddWorktree(t testing.TB, repo, branch string) string {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "worktree")
-	Cmd(t, "git", "-C", repo, "worktree", "add", "-b", branch, dir)
+	Cmd(t, "git", "-C", repo, "worktree", "add", "-q", "-b", branch, dir)
 	t.Cleanup(func() {
 		// Leave the shared repository consistent for later assertions.
 		_ = exec.Command("git", "-C", repo, "worktree", "remove", "--force", dir).Run()
