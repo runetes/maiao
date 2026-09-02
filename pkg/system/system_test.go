@@ -1,7 +1,9 @@
 package system_test
 
 import (
+	"errors"
 	"os"
+	"os/user"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -72,4 +74,44 @@ func TestResetRestoresWorkingDirectory(t *testing.T) {
 	cwd, err = os.Getwd()
 	require.NoError(t, err)
 	assert.Equal(t, wd, cwd)
+}
+
+func TestHomeDir(t *testing.T) {
+	// The two answers have to differ for the test to say anything: whichever one
+	// the code picks would otherwise look right.
+	passwd := "/passwd/database/home"
+	stubPasswdHome := func(t *testing.T) {
+		t.Cleanup(system.Reset)
+		system.CurrentUser = func() (*user.User, error) {
+			return &user.User{HomeDir: passwd}, nil
+		}
+	}
+
+	t.Run("HOME decides", func(t *testing.T) {
+		stubPasswdHome(t)
+		t.Setenv("HOME", "/from/home")
+		home, err := system.HomeDir()
+		require.NoError(t, err)
+		assert.Equal(t, "/from/home", home,
+			"a container, CI job or sandbox that overrides HOME means the files under it")
+	})
+
+	// Only then: there is nothing else to go on.
+	t.Run("without HOME, the passwd database answers", func(t *testing.T) {
+		stubPasswdHome(t)
+		t.Setenv("HOME", "")
+		home, err := system.HomeDir()
+		require.NoError(t, err)
+		assert.Equal(t, passwd, home)
+	})
+
+	t.Run("with neither, it fails rather than guessing", func(t *testing.T) {
+		t.Cleanup(system.Reset)
+		t.Setenv("HOME", "")
+		system.CurrentUser = func() (*user.User, error) {
+			return nil, errors.New("no passwd entry")
+		}
+		_, err := system.HomeDir()
+		assert.Error(t, err, "an empty home would name a path relative to the working directory")
+	})
 }

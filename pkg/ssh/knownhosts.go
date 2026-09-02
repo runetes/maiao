@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/adevinta/maiao/pkg/prompt"
+	"github.com/adevinta/maiao/pkg/system"
 )
 
 func IsKnownHostsError(err error) (host string, isMismatch bool, ok bool) {
@@ -115,7 +116,11 @@ or set %s=1 to trust whichever key %s offers on first use`,
 // makes the two functions disagree about which file they are editing whenever
 // HOME is overridden, as it is in containers, CI and agent sandboxes.
 func knownHostsPath() string {
-	return filepath.Join(os.Getenv("HOME"), ".ssh", "known_hosts")
+	// The error is only reachable with HOME unset and the passwd lookup failing
+	// too, and there is no better guess to make: an empty home yields the same
+	// relative path this returned before, and ssh-keygen reports it.
+	home, _ := system.HomeDir()
+	return filepath.Join(home, ".ssh", "known_hosts")
 }
 
 func removeHostKeys(host string) error {
