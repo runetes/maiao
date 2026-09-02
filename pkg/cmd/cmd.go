@@ -109,10 +109,15 @@ func NewCommand() *cobra.Command {
 
 With --global, installs it for every repository instead: new and cloned
 repositories get it from git through init.templateDir, and existing ones get it
-the first time you run git review in them, without being asked.`,
+the first time you run git review in them, without being asked.
+
+A commit message hook installed by something else, such as husky or lefthook, is
+never replaced. Maiao installs its own beside it and offers to add one line to
+the existing hook so that both run.`,
 		RunE: install,
 	}
 	installCmd.Flags().Bool("global", false, "Install the hook for every repository rather than only this one")
+	installCmd.Flags().Bool("force", false, "Replace a commit message hook installed by something else, rather than keeping it and running maiao's as well")
 	rootCmd.AddCommand(
 		installCmd,
 		&cobra.Command{

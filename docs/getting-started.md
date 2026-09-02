@@ -322,6 +322,12 @@ git config --global maiao.provider gitlab
 export GITHUB_TOKEN=...
 ```
 
+One question is deliberately not configured away: if the repository's
+`commit-msg` hook belongs to another tool, Maiao will not edit that file with
+nobody to ask. It installs its own hook beside it, then fails with exit status 4
+and prints the one line to add. See
+[When another tool already owns the commit-msg hook](#when-another-tool-already-owns-the-commit-msg-hook).
+
 ### Host keys
 
 Record the host keys when you build the image or sandbox, not when you run a
@@ -380,6 +386,38 @@ Worktrees need nothing extra: they share the main repository's hooks.
 
 This is the recommended setup for CI and for AI agents, which create
 repositories and worktrees often and cannot answer an interactive prompt.
+
+#### When another tool already owns the commit-msg hook
+
+Hook managers such as husky, lefthook and pre-commit install their own
+`commit-msg` hook, in exactly the place Maiao's belongs. Git runs one hook per
+event, so both are needed and neither may be thrown away.
+
+Maiao never replaces a hook it did not write. It installs its own beside it as
+`maiao-commit-msg` and offers to add a single line to yours:
+
+```console
+$ git review install
+.husky/commit-msg was installed by something else. Add a line to it that also runs maiao's hook? [y/N] y
+Installed the commit message hook at .husky/maiao-commit-msg, and added a call to it to .husky/commit-msg
+```
+
+The line goes directly after the shebang, so it is reached even by a hook that
+ends in `exit 0` or hands over with `exec`, and it locates Maiao's hook relative
+to your own so it keeps working in a worktree, under `core.hooksPath`, and inside
+a template directory:
+
+```sh
+"$(dirname -- "$0")/maiao-commit-msg" "$1" || exit 1
+```
+
+Declining changes nothing and prints the line for you to add yourself. A hook
+that is not a shell script is never edited — Maiao says where its own hook is and
+leaves the wiring to you. `git review install --force` replaces the existing hook
+instead, which is the one way to lose it.
+
+The same applies to a `commit-msg` hook in your own `init.templateDir`, where
+replacing it would reach every repository you create from then on.
 
 ### 2. Verify Installation
 
@@ -652,6 +690,17 @@ that setting, so reinstalling is enough. Note that a *relative* `core.hooksPath`
 is resolved against the top of the working tree, so each worktree has its own
 hooks directory and needs the hook installed separately.
 
+The other cause is a hook at that path that belongs to something else, and so
+never adds a `Change-Id`. Look at what is there:
+
+```bash
+cat "$(git rev-parse --git-path hooks/commit-msg)"
+```
+
+If it is somebody else's, `git review install` will keep it and offer to chain
+Maiao's hook to it — see
+[When another tool already owns the commit-msg hook](#when-another-tool-already-owns-the-commit-msg-hook).
+
 ### "multiple URLs not supported"
 
 **Problem:** Git remote has multiple URLs configured
@@ -768,12 +817,18 @@ git commit --fixup <correct-hash>
 
 **Solution:**
 ```bash
-# Check hook permissions
-chmod +x .git/hooks/commit-msg
+hook="$(git rev-parse --git-path hooks/commit-msg)"
 
-# Verify hook content
-cat .git/hooks/commit-msg
+# Check hook permissions
+chmod +x "$hook"
+
+# Verify hook content: it should mention Change-Id, or call maiao-commit-msg
+cat "$hook"
 ```
+
+A hook that mentions neither belongs to another tool and will never add a
+`Change-Id`. See
+[When another tool already owns the commit-msg hook](#when-another-tool-already-owns-the-commit-msg-hook).
 
 ## 💡 Best Practices
 

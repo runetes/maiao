@@ -92,10 +92,17 @@ var confirm = prompt.YesNo
 // reviews by, so declining to install it stops the review rather than failing
 // later with something harder to act on.
 func ensureCommitMsgHook(repoPath, gitDir string) (bool, error) {
-	if gerrit.Installed(gitDir) {
-		return true, nil
-	}
 	hookPath := lgit.HookPath(gitDir, lgit.CommitMsgHook)
+	switch gerrit.StateAt(hookPath) {
+	case gerrit.MaiaoHook:
+		return true, nil
+	case gerrit.ForeignHook:
+		// Not the same question as a missing hook, and not one the auto install
+		// option answers: the hook is there, it belongs to something else, and
+		// keeping it working means editing it rather than installing over it.
+		installedAt, err := ensureHook(os.Stderr, hookPath, false)
+		return installedAt != "", err
+	}
 	// Users who opted in globally are not asked again, which is what makes maiao
 	// usable from a script or an agent working across many repositories.
 	if !lgit.ConfigBool(repoPath, autoInstallHookOption) {
