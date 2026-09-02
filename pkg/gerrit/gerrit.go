@@ -37,16 +37,21 @@ func HookURL() string {
 	return commitMsgHookURL
 }
 
-// Installed returned wether the gerrit hook message is installed
+// Installed reports whether commits in this repository will get a Change-Id from
+// the commit message hook.
+//
+// A hook belonging to something else does not count, even though it sits exactly
+// where maiao's belongs. See StateAt.
 func (g *Gerrit) Installed() bool {
 	path := git.HookPath(g.gitDir, git.CommitMsgHook)
-	_, err := system.DefaultFileSystem.Stat(path)
+	state := StateAt(path)
 	log.Logger.WithFields(logrus.Fields{
 		"gitDir":               g.gitDir,
 		"commit-hook path":     path,
-		"commit-msg installed": err == nil,
-	}).Debugf("err: %v", err)
-	return err == nil
+		"commit-msg installed": state == MaiaoHook,
+		"commit-msg state":     state,
+	}).Debug("looked for the commit message hook")
+	return state == MaiaoHook
 }
 
 // Install installs the gerrit commit message hook in a repository
@@ -60,6 +65,10 @@ func (g *Gerrit) Install() error {
 // Unlike Install it does not resolve where the hook belongs, so it can also
 // write to locations that are not a repository's hooks directory, such as a git
 // template directory.
+//
+// It overwrites whatever is at path. Callers decide what may be overwritten, by
+// asking StateAt first: a ForeignHook belongs to someone else and replacing it
+// takes away what it did.
 func InstallAt(path string) error {
 	l := log.Logger.WithFields(logrus.Fields{
 		"commit-hook path": path,
