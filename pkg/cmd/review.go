@@ -19,7 +19,14 @@ const (
 
 func review(cmd *cobra.Command, args []string) error {
 	path := cmd.Flag("path").Value.String()
-	repo, err := git.PlainOpenWithOptions(path, &git.PlainOpenOptions{DetectDotGit: true})
+	repo, err := git.PlainOpenWithOptions(path, &git.PlainOpenOptions{
+		DetectDotGit: true,
+		// A linked worktree's .git points at .git/worktrees/<name>, which holds
+		// HEAD but keeps refs and config in the common dir named beside it.
+		// Without this, resolving what HEAD points at fails with
+		// "reference not found".
+		EnableDotGitCommonDir: true,
+	})
 	if err != nil {
 		return err
 	}
