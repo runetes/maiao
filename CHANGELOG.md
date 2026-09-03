@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/runetes/maiao/compare/maiao-v1.4.0...maiao-v1.4.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* open linked worktrees through the git common dir ([#29](https://github.com/runetes/maiao/issues/29)) ([721ca6d](https://github.com/runetes/maiao/commit/721ca6d38ccbeb6a48336a8b689f51a364168077))
+
 ## [1.4.0](https://github.com/runetes/maiao/compare/maiao-v1.3.0...maiao-v1.4.0) (2026-08-25)
 
 
