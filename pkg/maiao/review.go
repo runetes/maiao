@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -157,7 +158,7 @@ func Review(ctx context.Context, repo lgit.Repository, options ReviewOptions) er
 	}
 
 	if b == head.Hash() {
-		fmt.Println("nothing to review")
+		fmt.Fprintln(os.Stderr, "nothing to review")
 		return nil
 	}
 
@@ -222,7 +223,7 @@ func rebaseCommits(ctx context.Context, repo lgit.Repository, options ReviewOpti
 	changes = removeMergedChangeIDs(changes, knownChangeIDs)
 
 	if len(changes) == 0 {
-		fmt.Println("nothing to review")
+		fmt.Fprintln(os.Stderr, "nothing to review")
 		return nil
 	}
 
@@ -299,7 +300,7 @@ func sendPrs(ctx context.Context, repo lgit.Repository, options ReviewOptions, b
 			return err
 		}
 		if created {
-			fmt.Println(fmt.Sprintf("created PR %s", pr.URL))
+			fmt.Fprintf(os.Stderr, "created PR %s\n", pr.URL)
 		}
 		change.pr = pr
 		change.created = created
@@ -312,7 +313,7 @@ func sendPrs(ctx context.Context, repo lgit.Repository, options ReviewOptions, b
 			return err
 		}
 		if !change.created {
-			fmt.Println(fmt.Sprintf("updated PR %s", change.pr.URL))
+			fmt.Fprintf(os.Stderr, "updated PR %s\n", change.pr.URL)
 		}
 		log.ForContext(ctx).WithFields(logrus.Fields{"prOptions": opts, "change": change}).Trace("PR has been updated with parent ")
 	}
