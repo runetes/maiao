@@ -578,6 +578,29 @@ Change-IDs persist across:
 - Manual edits to `maiao.*` branches (will be overwritten)
 - Direct pushes to PR branches (changes lost on next `git review`)
 
+### Worktrees and Shared Config
+
+Every worktree of a repository shares one config file, the main repository's
+`.git/config`. Maiao caches whether the provider supports native stacks there:
+
+| Key | Meaning |
+|---|---|
+| `maiao.stackApiAvailable` | Whether the provider's stack API answered |
+| `maiao.stackApiCheckedAt` | When that was last checked, as a Unix timestamp. The answer is reused for 24 hours |
+
+So reviews running from two worktrees at once can overwrite each other's entry.
+This is harmless: it is a cache of a fact about the remote, not about the worktree,
+so either writer records the same answer. Worth knowing if you are reading the
+config or debugging parallel runs and wondering why an entry changed under you.
+
+Nothing else is shared in a way that matters. Branch names derive from each commit's
+Change-ID, so worktrees reviewing different commits push to different branches and
+open different pull requests, with no coordination between them.
+
+Hooks are shared too, which is what you want: install the commit-msg hook once in
+the main repository and every worktree has it. See
+[First Time Setup](getting-started.md#-first-time-setup).
+
 ## 📚 References and Further Reading
 
 - **[Gerrit Code Review](https://gerrit-review.googlesource.com/)** - Original inspiration for Change-IDs
