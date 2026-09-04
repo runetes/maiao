@@ -25,7 +25,9 @@ func NewHTTPClientForDomain(ctx context.Context, domain string) (*http.Client, e
 	token, err := getGithubToken(domain)
 	if err != nil {
 		log.ForContext(ctx).WithError(err).WithField("domain", domain).Errorf("unable to find token")
-		return nil, fmt.Errorf("unable to find token for %s: %s", domain, err.Error())
+		// Wrapped rather than interpolated, so that the caller can still recognise a
+		// credential failure and report it as one instead of a generic error.
+		return nil, fmt.Errorf("unable to find token for %s: %w", domain, err)
 	}
 	ts := oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: token},

@@ -82,3 +82,27 @@ func TestGetGitHubToken(t *testing.T) {
 		assert.Equal(t, "", token)
 	})
 }
+
+// TestMissingTokenStaysRecognisable checks the error a caller receives can still be
+// identified as a credential failure.
+//
+// The domain was interpolated into a new error rather than wrapped, which flattened
+// it to a string. Callers could then only tell "no token" apart from any other
+// failure by matching on prose, and maiao reported it as a generic error rather
+// than one a token would fix.
+func TestMissingTokenStaysRecognisable(t *testing.T) {
+	original := DefaultCredentialGetter
+	t.Cleanup(func() { DefaultCredentialGetter = original })
+	// A real chain with nothing in it that can answer, rather than a stub, so the
+	// error is the one production code produces.
+	DefaultCredentialGetter = credentials.ChainCredentialGetter{
+		&credentials.EnvToken{PasswordKey: "MAIAO_TOKEN_DELIBERATELY_UNSET"},
+	}
+
+	_, err := NewHTTPClientForDomain(context.Background(), "github.example.com")
+
+	require.Error(t, err)
+	var noCredentials credentials.Errors
+	assert.ErrorAs(t, err, &noCredentials, "the credential failure must remain reachable through the wrapping")
+	assert.Contains(t, err.Error(), "github.example.com", "the domain must still be named")
+}
