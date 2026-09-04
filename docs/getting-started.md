@@ -198,9 +198,13 @@ This installs a Git hook that automatically adds a unique `Change-Id` to every c
 Check that the hook is installed:
 
 ```bash
-ls -la .git/hooks/commit-msg
+ls -la "$(git rev-parse --git-path hooks/commit-msg)"
 # Should show the commit-msg hook file
 ```
+
+Ask git for the path rather than looking in `.git/hooks` directly. The hooks
+directory moves when `core.hooksPath` is configured, and inside a worktree
+`.git` is a file pointing at the main repository rather than a directory.
 
 ## 📖 The Maiao Workflow
 
@@ -445,6 +449,20 @@ git review install  # Reinstall hook
 # Then amend your commits
 git commit --amend --no-edit
 ```
+
+If the hook is present but commits still get no `Change-Id`, check where git
+actually looks for it:
+
+```bash
+git rev-parse --git-path hooks/commit-msg
+git config --get core.hooksPath
+```
+
+Hook managers such as husky, lefthook and pre-commit set `core.hooksPath`, which
+moves the hooks directory somewhere else entirely. `git review install` follows
+that setting, so reinstalling is enough. Note that a *relative* `core.hooksPath`
+is resolved against the top of the working tree, so each worktree has its own
+hooks directory and needs the hook installed separately.
 
 ### "multiple URLs not supported"
 

@@ -1,15 +1,13 @@
 package git
 
 import (
-	"bytes"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/adevinta/maiao/pkg/log"
 	"github.com/adevinta/maiao/pkg/system"
+	"github.com/adevinta/maiao/pkg/testutil"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
@@ -44,59 +42,21 @@ func TestFindGitDir(t *testing.T) {
 }
 
 func TestFindGitDirWithWorkDir(t *testing.T) {
-	repo, err := os.MkdirTemp("", "maiao-worktree-test-git-dir-repo")
-	require.NoError(t, err)
-	worktree, err := os.MkdirTemp("", "maiao-worktree-test-git-dir-worktree")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		os.RemoveAll(repo)
-		os.RemoveAll(worktree)
-	})
-	cmd(t, "git", "-C", repo, "init")
-	cmd(t, "git", "-C", repo, "commit", "--allow-empty", "-m", "initial commit")
-	// Use show toplevel as tempfiles on mac may be in /var/folders/... while mounted volumes are in /private/var/folders/...
-	// Internally, when creating worktrees, git uses the toplevel to point to the worktree dir
-	// Hint it to do the same
-	repoGitDir, err := FindGitDir(cmdOutput(t, "git", "-C", repo, "rev-parse", "--show-toplevel"))
+	testutil.IsolateHome(t)
+	// InitRepo reports the path through git, as tempfiles on mac may be in
+	// /var/folders/... while mounted volumes are in /private/var/folders/...
+	// Internally, when creating worktrees, git uses the toplevel to point to the
+	// worktree dir. Hint it to do the same.
+	repo := testutil.InitRepo(t)
+	repoGitDir, err := FindGitDir(repo)
 	assert.NoError(t, err)
-	cmd(t, "git", "-C", repo, "worktree", "add", worktree)
+	worktree := testutil.AddWorktree(t, repo, "worktree-branch")
 	worktreeGitDir, err := FindGitDir(worktree)
 	assert.NoError(t, err)
 
 	if !strings.HasPrefix(worktreeGitDir, filepath.Join(repoGitDir, "worktrees")) {
 		assert.Failf(t, "Unexpected prefix", "worktree git dir '%s' should be included in the repo git dir '%s'", worktreeGitDir, filepath.Join(repoGitDir, ".git", "worktrees"))
 	}
-}
-
-func cmd(t testing.TB, cmd string, args ...string) {
-	c := exec.Command(cmd, args...)
-	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
-	if err := c.Run(); err != nil {
-		t.Errorf("failed to run command %s: %s", strings.Join(append([]string{cmd}, args...), " "), err.Error())
-		t.FailNow()
-	}
-}
-
-func cmdOutput(t testing.TB, cmd string, args ...string) string {
-	c := exec.Command(cmd, args...)
-	b := bytes.NewBuffer(nil)
-	c.Stdout = b
-	c.Stderr = os.Stderr
-	if err := c.Run(); err != nil {
-		t.Errorf("failed to run command %s: %s", strings.Join(append([]string{cmd}, args...), " "), err.Error())
-		t.FailNow()
-	}
-	return strings.Trim(b.String(), " \n")
-}
-
-func commitFile(t *testing.T, dir, path, content, message string) string {
-	fd, err := os.Create(filepath.Join(dir, path))
-	assert.NoError(t, err)
-	fd.Write([]byte(content))
-	cmd(t, "git", "-C", dir, "add", path)
-	cmd(t, "git", "-C", dir, "commit", "-m", message)
-	return cmdOutput(t, "git", "-C", dir, "rev-parse", "HEAD")
 }
 
 // func TestRepo(t *testing.T) {
