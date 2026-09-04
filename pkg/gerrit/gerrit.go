@@ -51,10 +51,17 @@ func (g *Gerrit) Installed() bool {
 
 // Install installs the gerrit commit message hook in a repository
 func (g *Gerrit) Install() error {
-	path := git.HookPath(g.gitDir, git.CommitMsgHook)
+	return InstallAt(git.HookPath(g.gitDir, git.CommitMsgHook))
+}
 
+// InstallAt downloads the gerrit commit message hook and writes it, executable,
+// at path, creating the parent directory if needed.
+//
+// Unlike Install it does not resolve where the hook belongs, so it can also
+// write to locations that are not a repository's hooks directory, such as a git
+// template directory.
+func InstallAt(path string) error {
 	l := log.Logger.WithFields(logrus.Fields{
-		"gitDir":           g.gitDir,
 		"commit-hook path": path,
 		"download-url":     commitMsgHookURL,
 	})

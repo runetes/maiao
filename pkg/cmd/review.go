@@ -42,17 +42,12 @@ func review(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if !gerrit.Installed(gitDir) {
-		if prompt.YesNo(hookMissing) {
-			err = gerrit.Install(gitDir)
-			if err != nil {
-				return err
-			}
-		} else {
-			hookPath := lgit.HookPath(gitDir, lgit.CommitMsgHook)
-			fmt.Printf(noAutoInstallHookFmt+"\n", filepath.Dir(hookPath), hookPath, gerrit.HookURL())
-			return nil
-		}
+	proceed, err := ensureCommitMsgHook(path, gitDir)
+	if err != nil {
+		return err
+	}
+	if !proceed {
+		return nil
 	}
 	return maiao.Review(context.Background(), repo, maiao.ReviewOptions{
 		RepoPath:       path,
@@ -64,6 +59,32 @@ func review(cmd *cobra.Command, args []string) error {
 		Ready:          cmd.Flag("ready").Value.String() != "false",
 		Stack:          stackOption(repo),
 	})
+}
+
+// confirm is a seam so that tests do not need a terminal.
+var confirm = prompt.YesNo
+
+// ensureCommitMsgHook makes sure the commit message hook is installed, and
+// reports whether the review should go ahead.
+//
+// Without the hook, commits get no Change-Id and maiao has nothing to track
+// reviews by, so declining to install it stops the review rather than failing
+// later with something harder to act on.
+func ensureCommitMsgHook(repoPath, gitDir string) (bool, error) {
+	if gerrit.Installed(gitDir) {
+		return true, nil
+	}
+	// Users who opted in globally are not asked again, which is what makes maiao
+	// usable from a script or an agent working across many repositories.
+	hookPath := lgit.HookPath(gitDir, lgit.CommitMsgHook)
+	if !lgit.ConfigBool(repoPath, autoInstallHookOption) && !confirm(hookMissing) {
+		fmt.Printf(noAutoInstallHookFmt+"\n", filepath.Dir(hookPath), hookPath, gerrit.HookURL())
+		return false, nil
+	}
+	if err := installHook(hookPath); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func stackOption(repo *git.Repository) string {
