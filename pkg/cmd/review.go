@@ -74,12 +74,23 @@ func ensureCommitMsgHook(repoPath, gitDir string) (bool, error) {
 	if gerrit.Installed(gitDir) {
 		return true, nil
 	}
+	hookPath := lgit.HookPath(gitDir, lgit.CommitMsgHook)
 	// Users who opted in globally are not asked again, which is what makes maiao
 	// usable from a script or an agent working across many repositories.
-	hookPath := lgit.HookPath(gitDir, lgit.CommitMsgHook)
-	if !lgit.ConfigBool(repoPath, autoInstallHookOption) && !confirm(hookMissing) {
-		fmt.Printf(noAutoInstallHookFmt+"\n", filepath.Dir(hookPath), hookPath, gerrit.HookURL())
-		return false, nil
+	if !lgit.ConfigBool(repoPath, autoInstallHookOption) {
+		// With nobody to answer, the question cannot be treated as a "no". Doing so
+		// would end the run reporting success while no review had been created,
+		// which is indistinguishable from having nothing to review.
+		if prompt.Batch() {
+			return false, fmt.Errorf(`%w: the commit message hook is not installed.
+Run `+"`git review install --global`"+` to install it here and in every repository
+from now on, or `+"`git review install`"+` for this one only.
+Expected at %s`, prompt.ErrNoInput, hookPath)
+		}
+		if !confirm(hookMissing) {
+			fmt.Printf(noAutoInstallHookFmt+"\n", filepath.Dir(hookPath), hookPath, gerrit.HookURL())
+			return false, nil
+		}
 	}
 	if err := installHook(hookPath); err != nil {
 		return false, err
