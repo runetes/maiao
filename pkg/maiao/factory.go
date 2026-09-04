@@ -18,6 +18,10 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// pullRequesterFor is a seam so that tests can reach the pull request logic without
+// a provider to authenticate against.
+var pullRequesterFor = newPullRequester
+
 func newPullRequester(ctx context.Context, remote *git.Remote, repoPath string) (api.PullRequester, error) {
 	var lastErr error
 	for _, u := range remote.Config().URLs {
