@@ -4,7 +4,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/sirupsen/logrus"
+	"github.com/adevinta/maiao/pkg/log"
 )
 
 // GitConfigKeyringMode selects how maiao uses the OS password manager.
@@ -39,7 +39,7 @@ func KeyringModeFromGitConfig() KeyringMode {
 	}
 	mode, ok := ParseKeyringMode(raw)
 	if !ok {
-		logrus.WithField(GitConfigKeyringMode, strings.TrimSpace(raw)).
+		log.Logger.WithField(GitConfigKeyringMode, strings.TrimSpace(raw)).
 			Warnf("unknown value, expecting one of auto, enabled or disabled; using %s", KeyringAuto)
 		return KeyringAuto
 	}
@@ -59,7 +59,7 @@ func keyringGetter(mode KeyringMode) (CredentialGetter, bool) {
 
 	kr, err := NewKeyring(KeyringConfig(mode))
 	if err != nil {
-		entry := logrus.WithError(err).WithField(GitConfigKeyringMode, string(mode))
+		entry := log.Logger.WithError(err).WithField(GitConfigKeyringMode, string(mode))
 		if mode == KeyringEnabled {
 			entry.Warn("no password manager available to store credentials")
 		} else {

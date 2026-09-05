@@ -1,9 +1,12 @@
 package credentials
 
 import (
+	"bytes"
 	"errors"
 	"testing"
 
+	"github.com/adevinta/maiao/pkg/log"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -43,6 +46,27 @@ func TestKeyringGetterDisabledOpensNothing(t *testing.T) {
 	getter, ok := keyringGetter(KeyringDisabled)
 	assert.False(t, ok)
 	assert.Nil(t, getter)
+}
+
+// `git review -v 4` raises log.Logger to debug, and that is how a user finds out
+// which backend answered. Logging through the package-level logrus logger
+// instead would go to a different logger that -v never touches.
+func TestKeyringGetterReportsTheBackendAtDebugLevel(t *testing.T) {
+	out := &bytes.Buffer{}
+	previousOut, previousLevel := log.Logger.Out, log.Logger.Level
+	log.Logger.SetOutput(out)
+	log.Logger.SetLevel(logrus.DebugLevel)
+	t.Cleanup(func() {
+		log.Logger.SetOutput(previousOut)
+		log.Logger.SetLevel(previousLevel)
+	})
+
+	// Enabled rather than auto: the file backend guarantees something opens,
+	// on every platform CI runs on.
+	_, ok := keyringGetter(KeyringEnabled)
+	require.True(t, ok)
+	assert.Contains(t, out.String(), "opened password manager")
+	assert.Contains(t, out.String(), "backend=")
 }
 
 // The password manager must come last: it is the only getter that asks the user
