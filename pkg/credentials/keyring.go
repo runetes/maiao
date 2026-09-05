@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/99designs/keyring"
+	"github.com/adevinta/maiao/pkg/log"
 	"github.com/manifoldco/promptui"
-	"github.com/sirupsen/logrus"
 )
 
 // keyringServiceName names maiao in every backend: the macOS Keychain service,
@@ -202,7 +202,7 @@ func NewKeyring(cfg keyring.Config) (CredentialGetter, error) {
 	if err != nil {
 		return nil, err
 	}
-	logrus.WithField("backend", fmt.Sprintf("%T", kr)).Debug("opened password manager")
+	log.Logger.WithField("backend", fmt.Sprintf("%T", kr)).Debug("opened password manager")
 	return &Keyring{kr: kr, prompt: promptUser}, nil
 }
 

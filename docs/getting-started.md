@@ -181,16 +181,59 @@ export ORIGIN_TOKEN=<your-origin-token>
 
 Cursor Origin supports native stacking via `parentPullNumber` — Maiao uses this automatically when creating stacked PRs to register the parent-child relationship.
 
-### 🔐 Experimental: System Keychain (Optional)
+### 🔐 System Password Manager
 
-Use your OS keychain (macOS Keychain, pass, etc.) instead of environment variables or `.netrc`:
+Maiao can keep your token in the operating system's password manager instead of an
+environment variable or a plaintext `~/.netrc`. It asks for your username and token
+once, then reads them back on every later run.
+
+Maiao looks for credentials in this order, and only reaches the password manager when
+nothing earlier answered:
+
+1. the provider's environment variable (`GITHUB_TOKEN`, `GITLAB_TOKEN`, …)
+2. `~/.netrc`
+3. `git credential fill`
+4. the system password manager
+
+Which manager a machine has is a property of the machine, not of a checkout, so the
+setting is normally global:
 
 ```bash
-export MAIAO_EXPERIMENTAL_CREDENTIALS=true
-git review
+git config --global maiao.keyring enabled
 ```
 
-Supported keychains: [99designs/keyring](https://pkg.go.dev/github.com/99designs/keyring)
+| value      | behaviour                                                                                                                              |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `auto`     | **Default.** Use the OS password manager when the machine has one; otherwise skip it silently and rely on the sources above.              |
+| `enabled`  | Always store credentials. If the OS offers no password manager, fall back to an encrypted file store in `~/.maiao/keyring`, unlocked by a passphrase you are prompted for. |
+| `disabled` | Never use a password manager. Useful on CI, where the prompt has no terminal to appear on.                                                |
+
+Backends, in the order maiao prefers them:
+
+| platform | backends                                                          |
+| -------- | ------------------------------------------------------------------ |
+| macOS    | Keychain, then [pass](https://www.passwordstore.org)                |
+| Linux    | secret-service (GNOME Keyring), KWallet, then pass                  |
+| Windows  | Windows Credential Manager                                          |
+
+Entries are stored under the service name `maiao`, so with `pass` they live at
+`<store>/maiao/<host>-credentials`, and on Linux they go to a secret-service collection
+named `maiao`.
+
+The Linux kernel keyring (`keyctl`) is deliberately not used: it does not survive a
+reboot, which makes it the wrong place for a long-lived access token.
+
+To see which backend was chosen, raise the verbosity:
+
+```bash
+git review -v 4
+```
+
+Implementation: [99designs/keyring](https://pkg.go.dev/github.com/99designs/keyring)
+
+> **macOS:** the Keychain backend requires a binary built with cgo. Homebrew builds and
+> the official release binaries both have it; a binary you cross-compile from Linux
+> yourself will not, and will fall back to `pass` or to the file store.
 
 ## 🤖 Non-interactive use
 
