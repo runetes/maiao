@@ -9,6 +9,7 @@ import (
 )
 
 func TestCredentialGetterForProviderUsesCorrectEnvVar(t *testing.T) {
+	withGitConfig(t, "disabled\n", nil)
 	tests := []struct {
 		provider string
 		envKey   string
@@ -35,6 +36,7 @@ func TestCredentialGetterForProviderUsesCorrectEnvVar(t *testing.T) {
 }
 
 func TestCredentialGetterForProviderFallsBackToGitHubForUnknown(t *testing.T) {
+	withGitConfig(t, "disabled\n", nil)
 	old := os.Getenv("GITHUB_TOKEN")
 	defer os.Setenv("GITHUB_TOKEN", old)
 	os.Setenv("GITHUB_TOKEN", "fallback-token")
@@ -46,6 +48,9 @@ func TestCredentialGetterForProviderFallsBackToGitHubForUnknown(t *testing.T) {
 }
 
 func TestCredentialGetterForProviderReturnsErrorWhenNoCredentials(t *testing.T) {
+	// Without this the chain reaches the password manager, which prompts on the
+	// terminal and writes to the developer's real keychain.
+	withGitConfig(t, "disabled\n", nil)
 	// Ensure env var is unset
 	old := os.Getenv("GITLAB_TOKEN")
 	defer os.Setenv("GITLAB_TOKEN", old)
@@ -57,6 +62,7 @@ func TestCredentialGetterForProviderReturnsErrorWhenNoCredentials(t *testing.T) 
 }
 
 func TestCredentialGetterForBitbucketUsesUsername(t *testing.T) {
+	withGitConfig(t, "disabled\n", nil)
 	oldToken := os.Getenv("BITBUCKET_TOKEN")
 	oldUser := os.Getenv("BITBUCKET_USERNAME")
 	defer func() {
