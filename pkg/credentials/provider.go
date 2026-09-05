@@ -1,9 +1,5 @@
 package credentials
 
-import (
-	"github.com/99designs/keyring"
-)
-
 type providerEnvConfig struct {
 	passwordKey string
 	usernameKey string
@@ -30,10 +26,9 @@ func CredentialGetterForProvider(providerType string) CredentialGetter {
 		&GitCredentials{GitPath: "git"},
 	}
 
-	kr, err := NewKeyring(keyring.Config{
-		ServiceName: "maiao",
-	})
-	if err == nil {
+	// Last in the chain: the password manager is the only getter that asks the
+	// user for credentials, so it must run only once nothing else has answered.
+	if kr, ok := keyringGetter(KeyringModeFromGitConfig()); ok {
 		getters = append(getters, kr)
 	}
 

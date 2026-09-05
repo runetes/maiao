@@ -1,31 +1,29 @@
 package gh
 
 import (
-	"os"
+	"sync"
 
-	"github.com/99designs/keyring"
 	"github.com/adevinta/maiao/pkg/credentials"
 )
 
-// DefaultCredentialGetter implements retrieving credentials from a netrc formatted
-// file, with a location of ~/.netrc
-var DefaultCredentialGetter credentials.CredentialGetter = defaultCredentials()
+// DefaultCredentialGetter implements retrieving credentials for github.com.
+//
+// It delegates to the provider-aware chain rather than assembling its own: the
+// two copies drifted apart once already, and the copy here was the one that
+// still knew the keyring settings macOS and pass need.
+var DefaultCredentialGetter credentials.CredentialGetter = &lazyGitHubCredentials{}
 
-func defaultCredentials() credentials.CredentialGetter {
-	getters := []credentials.CredentialGetter{
-		&credentials.EnvToken{PasswordKey: "GITHUB_TOKEN"},
-		&credentials.Netrc{},
-		&credentials.GitCredentials{GitPath: "git"},
-	}
-	if os.Getenv("MAIAO_EXPERIMENTAL_CREDENTIALS") == "true" {
-		getters = append(getters,
-			credentials.MustNewKeyring(keyring.Config{
-				ServiceName:              "maiao",
-				PassPrefix:               "maiao/",
-				KeychainTrustApplication: true,
-				KeychainSynchronizable:   true,
-			}),
-		)
-	}
-	return credentials.ChainCredentialGetter(getters)
+// lazyGitHubCredentials builds the credential chain on first use. Building it
+// eagerly would shell out to git and open the OS password manager merely
+// because something imported this package.
+type lazyGitHubCredentials struct {
+	once   sync.Once
+	getter credentials.CredentialGetter
+}
+
+func (l *lazyGitHubCredentials) CredentialForHost(host string) (*credentials.Credentials, error) {
+	l.once.Do(func() {
+		l.getter = credentials.CredentialGetterForProvider("github")
+	})
+	return l.getter.CredentialForHost(host)
 }
