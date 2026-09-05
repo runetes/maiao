@@ -21,14 +21,51 @@ jobs:
       with:
         go-version: 1.22
 
-    - name: Build
-      run: |
-        export GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
-        ./scripts/cibuild
-    
+    - name: Test and build Linux and Windows
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TARGET_OS: linux windows
+      run: ./scripts/cibuild
+
     - name: Archive binaries
       uses: actions/upload-artifact@v4
       with:
-        name: maiao
+        name: maiao-linux-windows
+        path: |
+          dist
+
+  # Darwin is built on macOS, not cross-compiled from Linux. The macOS Keychain
+  # backend of 99designs/keyring sits behind a `darwin && cgo` build tag, and
+  # cross-compiling turns cgo off — which silently produced macOS binaries with
+  # no Keychain support at all.
+  build-darwin:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: 1.22
+
+    - name: Test password manager integration
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: go test ./pkg/credentials/...
+
+    - name: Build Darwin
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TARGET_OS: darwin
+        SKIP_TESTS: "true"
+      run: ./scripts/cibuild
+
+    - name: Verify the Keychain backend is compiled in
+      run: ./scripts/verify-keychain dist/git-review-Darwin-arm64
+
+    - name: Archive binaries
+      uses: actions/upload-artifact@v4
+      with:
+        name: maiao-darwin
         path: |
           dist

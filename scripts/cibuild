@@ -2,39 +2,97 @@
 
 set -e
 
-go install github.com/axw/gocov/gocov@latest
-go install github.com/AlekSi/gocov-xml@latest
-go install github.com/jstemmer/go-junit-report@latest
+# Which platforms to build. Darwin is separated out in CI because it must be
+# built on a macOS runner (see the cgo guard below); locally this defaults to
+# everything.
+TARGET_OS=${TARGET_OS:-"linux darwin windows"}
 
-set +e
+# Set to any non-empty value to build without running the test suite. CI uses
+# this on the macOS job, which only exists to produce darwin binaries.
+SKIP_TESTS=${SKIP_TESTS:-}
 
-go test -v ./... -cover -covermode=count -coverprofile=profile.cov | tee /dev/stderr | go-junit-report > junit.xml
-exit_code=$?
+if [[ -z "${SKIP_TESTS}" ]]; then
+    go install github.com/axw/gocov/gocov@latest
+    go install github.com/AlekSi/gocov-xml@latest
+    go install github.com/jstemmer/go-junit-report@latest
 
-gocov convert profile.cov | gocov-xml > coverage.xml
+    set +e
 
-if [[ ${exit_code} -ne 0 ]]; then
-    exit ${exit_code}
+    go test -v ./... -cover -covermode=count -coverprofile=profile.cov | tee /dev/stderr | go-junit-report > junit.xml
+    exit_code=$?
+
+    gocov convert profile.cov | gocov-xml > coverage.xml
+
+    if [[ ${exit_code} -ne 0 ]]; then
+        exit ${exit_code}
+    fi
 fi
 
 set -euo pipefail
 
+# The macOS Keychain backend of 99designs/keyring is behind a `darwin && cgo`
+# build tag. Cross-compiling darwin from Linux disables cgo, which drops the
+# Keychain silently: keyring.Open still succeeds, falling through to a file
+# store with no directory whose every read fails. Fail loudly instead.
+if [[ " ${TARGET_OS} " == *" darwin "* && "$(go env GOHOSTOS)" != "darwin" ]]; then
+    echo "refusing to build darwin binaries on $(go env GOHOSTOS)." >&2
+    echo "cgo is required for the macOS Keychain, and cgo needs a macOS host." >&2
+    exit 1
+fi
+
 mkdir -p dist
 
 function build(){
-    echo "building for os=${3} arch=${2}"
-    env GOARCH=${2} GOOS=${3} go build -o $1 -ldflags "-X github.com/adevinta/maiao/pkg/version.Version=$(git describe --always --tags --dirty)" ./cmd/maiao
+    local output=$1 arch=$2 os=$3
+    echo "building for os=${os} arch=${arch}"
+
+    local -a build_env=(GOARCH="${arch}" GOOS="${os}")
+    if [[ "${os}" == "darwin" ]]; then
+        # Keep cgo on so the Keychain backend is compiled in, and point the
+        # C compiler at the target architecture: the runner is arm64 and the
+        # Go toolchain does not pass -arch to clang by itself.
+        build_env+=(CGO_ENABLED=1)
+        case "${arch}" in
+            amd64) build_env+=(CC="clang -arch x86_64") ;;
+            arm64) build_env+=(CC="clang -arch arm64") ;;
+        esac
+    else
+        build_env+=(CGO_ENABLED=0)
+    fi
+
+    env "${build_env[@]}" go build -o "${output}" \
+        -ldflags "-X github.com/adevinta/maiao/pkg/version.Version=$(git describe --always --tags --dirty)" \
+        ./cmd/maiao
 }
 
-for arch in amd64 arm64; do
-    build dist/git-review-windows-${arch} ${arch} windows
-    build dist/git-review-Darwin-${arch} ${arch} darwin
-    build dist/git-review-Linux-${arch} ${arch} linux
-done
+function build_os(){
+    local os=$1
+    case "${os}" in
+        darwin)
+            build dist/git-review-Darwin-amd64 amd64 darwin
+            build dist/git-review-Darwin-arm64 arm64 darwin
+            ;;
+        linux)
+            for arch in amd64 arm64 arm 386; do
+                build dist/git-review-Linux-${arch} ${arch} linux
+            done
+            ;;
+        windows)
+            # No windows/arm: Go dropped 32-bit ARM on Windows in 1.25, which
+            # go.mod already requires.
+            for arch in amd64 arm64 386; do
+                build dist/git-review-windows-${arch} ${arch} windows
+            done
+            ;;
+        *)
+            echo "unknown target os ${os}" >&2
+            exit 1
+            ;;
+    esac
+}
 
-for arch in arm 386; do
-    build dist/git-review-Linux-${arch} ${arch} linux
-    build dist/git-review-windows-${arch} ${arch} windows
+for os in ${TARGET_OS}; do
+    build_os "${os}"
 done
 
 for f in dist/git-review-*; do
