@@ -16,9 +16,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: call-build
     steps:
+    # Linux/Windows and Darwin are built by separate jobs, on separate runners.
     - uses: actions/download-artifact@v4
       with:
-        name: maiao
+        pattern: maiao-*
+        merge-multiple: true
     - name: Release
       uses: softprops/action-gh-release@v2
       with:

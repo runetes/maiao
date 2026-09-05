@@ -1,0 +1,25 @@
+#! /bin/bash
+#
+# Asserts that a built darwin binary actually contains the macOS Keychain
+# backend.
+#
+# 99designs/keyring puts that backend behind a `darwin && cgo` build tag, so a
+# darwin binary cross-compiled from Linux has no Keychain at all. Nothing fails
+# at build time and nothing fails at startup: keyring.Open just falls through to
+# a file store it has no directory for, and every credential lookup dies with
+# "No directory provided for file keyring". Released macOS binaries shipped that
+# way, so the artifact is checked rather than trusted.
+
+set -euo pipefail
+
+binary=${1:?usage: verify-keychain <binary>}
+
+# grep -c rather than -q: -q closes the pipe on the first match, killing
+# `go tool nm` with SIGPIPE, which pipefail then reports as a failed check.
+if ! go tool nm "${binary}" | grep -c "99designs/keyring.*keychain" > /dev/null; then
+    echo "FAIL: ${binary} has no macOS Keychain backend." >&2
+    echo "It was built without cgo. Build darwin binaries on a macOS host with CGO_ENABLED=1." >&2
+    exit 1
+fi
+
+echo "OK: ${binary} contains the macOS Keychain backend"
