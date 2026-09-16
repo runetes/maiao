@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/spf13/cobra"
@@ -13,8 +14,11 @@ import (
 )
 
 const (
-	hookMissing          = "commit message hook is missing, do you want to install it automatically?"
-	noAutoInstallHookFmt = "You are missing change ids in your commits. \nPlease install the commit hook by running\n`curl -o .git/hooks/commit-msg %s && chmod +x .git/hooks/commit-msg`"
+	hookMissing = "commit message hook is missing, do you want to install it automatically?"
+	// noAutoInstallHookFmt takes the hooks directory, the resolved hook path and the
+	// hook download URL. The path is resolved through git.HookPath so the command
+	// works in worktrees, where .git is a file pointing at the common git dir.
+	noAutoInstallHookFmt = "You are missing change ids in your commits. \nPlease install the commit hook by running\n`mkdir -p %[1]s && curl -o %[2]s %[3]s && chmod +x %[2]s`"
 )
 
 func review(cmd *cobra.Command, args []string) error {
@@ -45,7 +49,8 @@ func review(cmd *cobra.Command, args []string) error {
 				return err
 			}
 		} else {
-			fmt.Println(fmt.Sprintf(noAutoInstallHookFmt, gerrit.HookURL()))
+			hookPath := lgit.HookPath(gitDir, lgit.CommitMsgHook)
+			fmt.Printf(noAutoInstallHookFmt+"\n", filepath.Dir(hookPath), hookPath, gerrit.HookURL())
 			return nil
 		}
 	}
