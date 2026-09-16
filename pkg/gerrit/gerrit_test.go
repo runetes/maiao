@@ -38,7 +38,7 @@ func TestIsInstalled(t *testing.T) {
 	system.DefaultFileSystem = fs
 	t.Cleanup(system.Reset)
 
-	system.EnsureTestFileContent(t, fs, "/src/.git/hooks/commit-msg", "some-content")
+	system.EnsureTestFileContent(t, fs, "/src/.git/hooks/commit-msg", changeIDHook)
 	system.EnsureTestFileContent(t, fs, "/src/.git/worktrees/some-name/commondir", "../..")
 	t.Run("when the hook is installed, installed returns True", func(t *testing.T) {
 		assert.True(t, Installed("/src/.git/"))
@@ -48,6 +48,17 @@ func TestIsInstalled(t *testing.T) {
 	})
 	t.Run("when the hook is not installed, installed returns False", func(t *testing.T) {
 		assert.False(t, Installed("/src/"))
+	})
+	// A hook manager puts its own commit message hook exactly where maiao's
+	// belongs. Counting it as maiao's is what makes the failure silent: commits
+	// get no Change-Id and nothing ever says why.
+	t.Run("when the hook belongs to something else, installed returns False", func(t *testing.T) {
+		system.EnsureTestFileContent(t, fs, "/other/.git/hooks/commit-msg", foreignHook)
+		assert.False(t, Installed("/other/.git/"))
+	})
+	t.Run("when the hook chains to maiao's, installed returns True", func(t *testing.T) {
+		system.EnsureTestFileContent(t, fs, "/chained/.git/hooks/commit-msg", foreignHook+"\n"+ChainCall(ChainedHookName)+"\n")
+		assert.True(t, Installed("/chained/.git/"))
 	})
 }
 

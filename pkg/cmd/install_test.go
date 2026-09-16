@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	lgit "github.com/adevinta/maiao/pkg/git"
+	"github.com/adevinta/maiao/pkg/prompt"
 	"github.com/adevinta/maiao/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -31,6 +32,18 @@ func stubHookInstall(t testing.TB) {
 		}
 		return os.WriteFile(path, []byte(fakeHook), 0700)
 	}
+}
+
+// setBatch forces batch mode on or off.
+//
+// Tests must be explicit about it: under `go test` stdin is not a terminal, so
+// the default is batch mode, and a test exercising a prompt would otherwise never
+// reach it.
+func setBatch(t testing.TB, b bool) {
+	t.Helper()
+	original := prompt.Batch()
+	t.Cleanup(func() { prompt.SetBatch(original) })
+	prompt.SetBatch(b)
 }
 
 // runInstall runs `git review install` with the given arguments.
@@ -152,6 +165,8 @@ func TestInstallGlobalExpandsTilde(t *testing.T) {
 func TestEnsureCommitMsgHook(t *testing.T) {
 	t.Run("already installed, nothing to do", func(t *testing.T) {
 		testutil.IsolateHome(t)
+		// Batch off, so that "must not prompt" is proven rather than unreachable.
+		setBatch(t, false)
 		repo := testutil.InitRepo(t)
 		gitDir, err := lgit.FindGitDir(repo)
 		require.NoError(t, err)
@@ -169,6 +184,8 @@ func TestEnsureCommitMsgHook(t *testing.T) {
 
 	t.Run("auto install opted in, installs without asking", func(t *testing.T) {
 		testutil.IsolateHome(t)
+		// Batch off, so that "must not prompt" is proven rather than unreachable.
+		setBatch(t, false)
 		repo := testutil.InitRepo(t)
 		gitDir, err := lgit.FindGitDir(repo)
 		require.NoError(t, err)
@@ -187,6 +204,7 @@ func TestEnsureCommitMsgHook(t *testing.T) {
 
 	t.Run("not opted in and declined, the review stops", func(t *testing.T) {
 		testutil.IsolateHome(t)
+		setBatch(t, false)
 		repo := testutil.InitRepo(t)
 		gitDir, err := lgit.FindGitDir(repo)
 		require.NoError(t, err)
@@ -202,6 +220,7 @@ func TestEnsureCommitMsgHook(t *testing.T) {
 
 	t.Run("not opted in and accepted, installs", func(t *testing.T) {
 		testutil.IsolateHome(t)
+		setBatch(t, false)
 		repo := testutil.InitRepo(t)
 		gitDir, err := lgit.FindGitDir(repo)
 		require.NoError(t, err)
@@ -218,6 +237,8 @@ func TestEnsureCommitMsgHook(t *testing.T) {
 	// where git will actually run the hook, or it silently does nothing.
 	t.Run("auto install honours core.hooksPath", func(t *testing.T) {
 		testutil.IsolateHome(t)
+		// Batch off, so that "must not prompt" is proven rather than unreachable.
+		setBatch(t, false)
 		repo := testutil.InitRepo(t)
 		testutil.Cmd(t, "git", "-C", repo, "config", "core.hooksPath", ".githooks")
 		testutil.Cmd(t, "git", "config", "--global", autoInstallHookOption, "true")

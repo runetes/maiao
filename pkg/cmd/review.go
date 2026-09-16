@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/go-git/go-git/v5"
@@ -22,6 +23,24 @@ const (
 )
 
 func review(cmd *cobra.Command, args []string) error {
+	jsonOutput := cmd.Flag("json").Value.String() == "true"
+	// Before anything that can fail, so that every failure is reported the same way,
+	// and before Review, which is what starts the rebase whose final step re-runs
+	// maiao — that run finds the handoff through the environment.
+	handoff, err := newResultHandoff(jsonOutput)
+	if err != nil {
+		return err
+	}
+	defer handoff.cleanup()
+	result, err := runReview(cmd, args)
+	return emitResult(os.Stdout, handoff, jsonOutput, result, err)
+}
+
+// runReview does the review itself, leaving its caller to report the outcome.
+//
+// Split out so that reporting is on one path rather than at every return: a failure
+// that goes unreported is one a caller reading stdout cannot see at all.
+func runReview(cmd *cobra.Command, args []string) (*maiao.Result, error) {
 	path := cmd.Flag("path").Value.String()
 	repo, err := git.PlainOpenWithOptions(path, &git.PlainOpenOptions{
 		DetectDotGit: true,
@@ -32,7 +51,7 @@ func review(cmd *cobra.Command, args []string) error {
 		EnableDotGitCommonDir: true,
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	branch := ""
 	if len(args) > 0 {
@@ -40,14 +59,16 @@ func review(cmd *cobra.Command, args []string) error {
 	}
 	gitDir, err := lgit.FindGitDir(path)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	proceed, err := ensureCommitMsgHook(path, gitDir)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	// A declined install is a decision, not a failure, so it still reports a
+	// result: an empty one, rather than nothing at all for a caller to parse.
 	if !proceed {
-		return nil
+		return &maiao.Result{}, nil
 	}
 	return maiao.Review(context.Background(), repo, maiao.ReviewOptions{
 		RepoPath:       path,
@@ -71,15 +92,33 @@ var confirm = prompt.YesNo
 // reviews by, so declining to install it stops the review rather than failing
 // later with something harder to act on.
 func ensureCommitMsgHook(repoPath, gitDir string) (bool, error) {
-	if gerrit.Installed(gitDir) {
+	hookPath := lgit.HookPath(gitDir, lgit.CommitMsgHook)
+	switch gerrit.StateAt(hookPath) {
+	case gerrit.MaiaoHook:
 		return true, nil
+	case gerrit.ForeignHook:
+		// Not the same question as a missing hook, and not one the auto install
+		// option answers: the hook is there, it belongs to something else, and
+		// keeping it working means editing it rather than installing over it.
+		installedAt, err := ensureHook(os.Stderr, hookPath, false)
+		return installedAt != "", err
 	}
 	// Users who opted in globally are not asked again, which is what makes maiao
 	// usable from a script or an agent working across many repositories.
-	hookPath := lgit.HookPath(gitDir, lgit.CommitMsgHook)
-	if !lgit.ConfigBool(repoPath, autoInstallHookOption) && !confirm(hookMissing) {
-		fmt.Printf(noAutoInstallHookFmt+"\n", filepath.Dir(hookPath), hookPath, gerrit.HookURL())
-		return false, nil
+	if !lgit.ConfigBool(repoPath, autoInstallHookOption) {
+		// With nobody to answer, the question cannot be treated as a "no". Doing so
+		// would end the run reporting success while no review had been created,
+		// which is indistinguishable from having nothing to review.
+		if prompt.Batch() {
+			return false, fmt.Errorf(`%w: the commit message hook is not installed.
+Run `+"`git review install --global`"+` to install it here and in every repository
+from now on, or `+"`git review install`"+` for this one only.
+Expected at %s`, prompt.ErrNoInput, hookPath)
+		}
+		if !confirm(hookMissing) {
+			fmt.Fprintf(os.Stderr, noAutoInstallHookFmt+"\n", filepath.Dir(hookPath), hookPath, gerrit.HookURL())
+			return false, nil
+		}
 	}
 	if err := installHook(hookPath); err != nil {
 		return false, err

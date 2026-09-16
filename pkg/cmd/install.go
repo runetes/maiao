@@ -8,6 +8,7 @@ import (
 
 	"github.com/adevinta/maiao/pkg/gerrit"
 	lgit "github.com/adevinta/maiao/pkg/git"
+	"github.com/adevinta/maiao/pkg/prompt"
 	"github.com/spf13/cobra"
 )
 
@@ -24,14 +25,68 @@ const (
 var installHook = gerrit.InstallAt
 
 func install(cmd *cobra.Command, args []string) error {
+	force := cmd.Flag("force").Value.String() == "true"
 	if cmd.Flag("global").Value.String() == "true" {
-		return installGlobally(cmd.OutOrStdout())
+		return installGlobally(cmd.OutOrStdout(), force)
 	}
 	gitDir, err := lgit.FindGitDir(cmd.Flag("path").Value.String())
 	if err != nil {
 		return err
 	}
-	return installHook(lgit.HookPath(gitDir, lgit.CommitMsgHook))
+	_, err = ensureHook(cmd.OutOrStdout(), lgit.HookPath(gitDir, lgit.CommitMsgHook), force)
+	return err
+}
+
+// ensureHook installs the commit message hook at path, and returns where it ended
+// up, which is empty when it was not installed at all.
+//
+// A hook maiao did not write is never replaced. Hook managers such as husky,
+// lefthook and pre-commit install their own commit message hook, and maiao
+// resolves to the same path they do, so overwriting would silently take away
+// whatever the repository's own hook did — commit linting, most often. Both hooks
+// are wanted, so maiao's is written beside theirs and theirs is made to call it.
+//
+// Editing a file maiao did not write is asked about even when the user has opted
+// in to installing without being asked: opting into an install is not opting into
+// having another tool's hook rewritten. With nobody to ask, the line to add is
+// printed instead, which is the same bargain batch mode makes everywhere else.
+//
+// force replaces the foreign hook instead, for the user who wants maiao's and only
+// maiao's.
+func ensureHook(out io.Writer, path string, force bool) (string, error) {
+	if force || gerrit.StateAt(path) != gerrit.ForeignHook {
+		if err := installHook(path); err != nil {
+			return "", err
+		}
+		return path, nil
+	}
+	// Written first, whatever is decided next: it adds a file rather than changing
+	// one, and every route from here — automatic or by hand — needs the hook to be
+	// there in order to be called.
+	beside := filepath.Join(filepath.Dir(path), gerrit.ChainedHookName)
+	if err := installHook(beside); err != nil {
+		return "", err
+	}
+	call := gerrit.ChainCall(gerrit.ChainedHookName)
+	switch {
+	case !gerrit.Chainable(path):
+		return "", fmt.Errorf(`%s was installed by something else and is not a shell script, so maiao cannot extend it.
+Maiao's hook is at %s. Make %s run it with the message file as its argument, or
+replace %s with `+"`git review install --force`", path, beside, path, path)
+	case prompt.Batch():
+		return "", fmt.Errorf(`%w: %s was installed by something else.
+Maiao's hook is at %s. Add this line to %s:
+%s
+or replace %s with `+"`git review install --force`", prompt.ErrNoInput, path, beside, path, call, path)
+	case !confirm(fmt.Sprintf("%s was installed by something else. Add a line to it that also runs maiao's hook?", path)):
+		fmt.Fprintf(out, "Left %s as it was. Maiao's hook is at %s; add this line to run it:\n%s\n", path, beside, call)
+		return "", nil
+	}
+	if err := gerrit.ChainTo(path, gerrit.ChainedHookName); err != nil {
+		return "", err
+	}
+	fmt.Fprintf(out, "Installed the commit message hook at %s, and added a call to it to %s\n", beside, path)
+	return beside, nil
 }
 
 // installGlobally makes the commit message hook apply to repositories the user
@@ -50,13 +105,17 @@ func install(cmd *cobra.Command, args []string) error {
 // Setting core.hooksPath globally would be shorter and is deliberately not done:
 // it replaces every repository's hooks directory, so a repository that ships its
 // own hooks would silently stop running them, machine wide.
-func installGlobally(out io.Writer) error {
+func installGlobally(out io.Writer, force bool) error {
 	dir, maiaoOwned, err := templateDir()
 	if err != nil {
 		return err
 	}
 	hookPath := filepath.Join(dir, "hooks", string(lgit.CommitMsgHook))
-	if err := installHook(hookPath); err != nil {
+	// A template directory of the user's own may already contain a commit message
+	// hook, and it reaches every repository they create from now on, so replacing
+	// it is the same mistake as replacing a repository's own — multiplied.
+	installedAt, err := ensureHook(out, hookPath, force)
+	if err != nil {
 		return err
 	}
 	if maiaoOwned {
@@ -68,7 +127,10 @@ func installGlobally(out io.Writer) error {
 		return err
 	}
 
-	fmt.Fprintf(out, "Installed the commit message hook at %s\n", hookPath)
+	// Chaining already said where the hook went, and to what.
+	if installedAt == hookPath {
+		fmt.Fprintf(out, "Installed the commit message hook at %s\n", hookPath)
+	}
 	if maiaoOwned {
 		fmt.Fprintf(out, "Set %s so that new and cloned repositories get it from git.\n", templateDirOption)
 	} else {

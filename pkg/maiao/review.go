@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -49,12 +50,12 @@ type change struct {
 	parent   *change
 }
 
-func Review(ctx context.Context, repo lgit.Repository, options ReviewOptions) error {
+func Review(ctx context.Context, repo lgit.Repository, options ReviewOptions) (*Result, error) {
 	defaultRemoteOption(ctx, repo, &options)
 	head, err := repo.Head()
 	if err != nil {
 		log.ForContext(ctx).WithError(err).Error("failed to retrieve git HEAD")
-		return err
+		return nil, err
 	}
 
 	ctx = log.WithContextFields(ctx, logrus.Fields{
@@ -70,12 +71,12 @@ func Review(ctx context.Context, repo lgit.Repository, options ReviewOptions) er
 	remote, err := repo.Remote(options.Remote)
 	if err != nil {
 		log.ForContext(ctx).WithError(err).Error("failed to find remote")
-		return err
+		return nil, err
 	}
 
-	prAPI, err := newPullRequester(ctx, remote, options.RepoPath)
+	prAPI, err := pullRequesterFor(ctx, remote, options.RepoPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defaultBranchOption(ctx, repo, prAPI, &options)
 
@@ -85,17 +86,17 @@ func Review(ctx context.Context, repo lgit.Repository, options ReviewOptions) er
 	})
 
 	if len(remote.Config().URLs) != 1 {
-		return errors.New("multiple URLs not supported")
+		return nil, errors.New("multiple URLs not supported")
 	}
 
 	endpoint, err := transport.NewEndpoint(remote.Config().URLs[0])
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	providerType, err := provider.Detect(endpoint.Host, options.RepoPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	credGetter := credentials.CredentialGetterForProvider(string(providerType))
 
@@ -104,15 +105,10 @@ func Review(ctx context.Context, repo lgit.Repository, options ReviewOptions) er
 		RemoteName: options.Remote,
 		Auth:       &credentials.GitAuth{Credentials: credGetter, Endpoint: endpoint},
 	}
-	err = remote.Fetch(fetchOpts)
+	err = retryAfterHostKeyFix(endpoint.Host, func() error { return remote.Fetch(fetchOpts) })
 	if err != nil && err != git.NoErrAlreadyUpToDate {
-		if fixErr := handleSSHHostKeyError(err, endpoint.Host); fixErr == nil {
-			err = remote.Fetch(fetchOpts)
-		}
-		if err != nil && err != git.NoErrAlreadyUpToDate {
-			log.ForContext(ctx).WithError(err).Error("failed to update git repository")
-			return err
-		}
+		log.ForContext(ctx).WithError(err).Error("failed to update git repository")
+		return nil, err
 	}
 	headRef := plumbing.Revision(plumbing.HEAD)
 	ctx = log.WithContextFields(ctx, logrus.Fields{
@@ -123,11 +119,11 @@ func Review(ctx context.Context, repo lgit.Repository, options ReviewOptions) er
 	b, err := lgit.MergeBase(ctx, repo, remoteRef, headRef)
 	if err != nil {
 		log.ForContext(ctx).WithError(err).Errorf("unable to find common ancestor")
-		return err
+		return nil, err
 	}
 	remoteCommit, err := repo.ResolveRevision(plumbing.Revision(remoteRef))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	needRebase := remoteCommit.String() != b.String()
@@ -136,7 +132,7 @@ func Review(ctx context.Context, repo lgit.Repository, options ReviewOptions) er
 		// we also need to rebase if some changeIDs are missing
 		changes, err := extractChanges(ctx, repo, b, head.Hash())
 		if err != nil {
-			return err
+			return nil, err
 		}
 		needRebase = changesNeedRebase(ctx, changes)
 	}
@@ -149,24 +145,21 @@ func Review(ctx context.Context, repo lgit.Repository, options ReviewOptions) er
 		log.ForContext(ctx).Debug("local branch is not up to date, needs rebasing")
 		err := rebaseCommits(ctx, repo, options, b, *remoteCommit, head.Hash())
 		if err != nil {
-			return err
+			return nil, err
 		}
-		return nil
+		// The pull requests are created by the maiao run that git rebase invokes as
+		// its final todo step, so this process has no result of its own.
+		return &Result{}, nil
 	} else {
 		log.ForContext(ctx).WithField("mergeSha", remoteCommit.String()).WithField("baseSha", b.String()).Debug("no rebase needed")
 	}
 
 	if b == head.Hash() {
-		fmt.Println("nothing to review")
-		return nil
+		fmt.Fprintln(os.Stderr, "nothing to review")
+		return &Result{}, nil
 	}
 
-	err = sendPrs(ctx, repo, options, b, head.Hash())
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return sendPrs(ctx, repo, options, b, head.Hash())
 }
 
 func changesNeedRebase(ctx context.Context, changes []*change) bool {
@@ -222,49 +215,54 @@ func rebaseCommits(ctx context.Context, repo lgit.Repository, options ReviewOpti
 	changes = removeMergedChangeIDs(changes, knownChangeIDs)
 
 	if len(changes) == 0 {
-		fmt.Println("nothing to review")
+		fmt.Fprintln(os.Stderr, "nothing to review")
 		return nil
 	}
 
-	err = lgit.RebaseCommits(ctx, repo, base, remoteHead, rebaseTODO(changes))
-	if err != nil {
-		return nil
+	if err := rebase(ctx, repo, base, remoteHead, rebaseTODO(changes)); err != nil {
+		// Reporting success here said the review was done when nothing had been
+		// submitted: git stops the rebase where it is, and the step that creates the
+		// reviews is the last one in the todo list, so it never ran.
+		return fmt.Errorf("%w: resolve it and run `git rebase --continue`: %w", ErrRebaseIncomplete, err)
 	}
 	return nil
 }
 
-func sendPrs(ctx context.Context, repo lgit.Repository, options ReviewOptions, base, head plumbing.Hash) error {
+// rebase is a seam so that tests do not need to provoke a real conflict.
+var rebase = lgit.RebaseCommits
+
+func sendPrs(ctx context.Context, repo lgit.Repository, options ReviewOptions, base, head plumbing.Hash) (*Result, error) {
 
 	remote, err := repo.Remote(options.Remote)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	changes, err := extractChanges(ctx, repo, base, head)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	refspecs := []config.RefSpec{}
 	for _, change := range changes {
 		if len(change.commits) == 0 {
-			return errors.New("empty change")
+			return nil, errors.New("empty change")
 		}
 		refspecs = append(refspecs, config.RefSpec(change.head.Hash.String()+":refs/heads/"+change.branch))
 	}
 
 	if len(remote.Config().URLs) != 1 {
-		return errors.New("multiple URLs not supported")
+		return nil, errors.New("multiple URLs not supported")
 	}
 
 	endpoint, err := transport.NewEndpoint(remote.Config().URLs[0])
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	providerType, err := provider.Detect(endpoint.Host, options.RepoPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	credGetter := credentials.CredentialGetterForProvider(string(providerType))
 
@@ -275,19 +273,14 @@ func sendPrs(ctx context.Context, repo lgit.Repository, options ReviewOptions, b
 		Auth:       &credentials.GitAuth{Credentials: credGetter, Endpoint: endpoint},
 		Force:      true,
 	}
-	err = repo.Push(pushOpts)
+	err = retryAfterHostKeyFix(endpoint.Host, func() error { return repo.Push(pushOpts) })
 	if err != nil && err != git.NoErrAlreadyUpToDate {
-		if fixErr := handleSSHHostKeyError(err, endpoint.Host); fixErr == nil {
-			err = repo.Push(pushOpts)
-		}
-	}
-	if err != nil && err != git.NoErrAlreadyUpToDate {
-		return err
+		return nil, err
 	}
 
-	prAPI, err := newPullRequester(ctx, remote, options.RepoPath)
+	prAPI, err := pullRequesterFor(ctx, remote, options.RepoPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var parent *change
@@ -296,10 +289,13 @@ func sendPrs(ctx context.Context, repo lgit.Repository, options ReviewOptions, b
 		opts := prOptions(repo, prAPI, options, change, changes[:i], changes[i+1:])
 		pr, created, err := prAPI.Ensure(ctx, opts)
 		if err != nil {
-			return err
+			// The pull requests earlier in the stack exist on the remote already, so
+			// reporting nothing would describe this as a run that did nothing. A caller
+			// retrying from there could not tell whether it was resuming or starting over.
+			return newResult(changes), err
 		}
 		if created {
-			fmt.Println(fmt.Sprintf("created PR %s", pr.URL))
+			fmt.Fprintf(os.Stderr, "created PR %s\n", pr.URL)
 		}
 		change.pr = pr
 		change.created = created
@@ -309,24 +305,33 @@ func sendPrs(ctx context.Context, repo lgit.Repository, options ReviewOptions, b
 		opts := prOptions(repo, prAPI, options, change, changes[:i], changes[i+1:])
 		_, err := prAPI.Update(ctx, change.pr, opts)
 		if err != nil {
-			return err
+			// Every pull request exists by now, so all of them are reported even though
+			// the ones after this may still be missing a description or a base branch.
+			return newResult(changes), err
 		}
 		if !change.created {
-			fmt.Println(fmt.Sprintf("updated PR %s", change.pr.URL))
+			fmt.Fprintf(os.Stderr, "updated PR %s\n", change.pr.URL)
 		}
 		log.ForContext(ctx).WithFields(logrus.Fields{"prOptions": opts, "change": change}).Trace("PR has been updated with parent ")
 	}
 
+	result := newResult(changes)
 	if len(changes) > 1 {
-		registerNativeStack(ctx, prAPI, options, changes)
+		result.StackID = registerNativeStack(ctx, prAPI, options, changes)
 	}
 
-	return nil
+	return result, nil
 }
 
-func registerNativeStack(ctx context.Context, prAPI api.PullRequester, options ReviewOptions, changes []*change) {
+// registerNativeStack returns the identifier the provider gave the stack, or an
+// empty string when there is none to report.
+//
+// Every failure here is a warning rather than an error: the pull requests are
+// already stacked by their base branches, and the native stack is an extra the
+// provider may or may not offer.
+func registerNativeStack(ctx context.Context, prAPI api.PullRequester, options ReviewOptions, changes []*change) string {
 	if options.Stack == "false" {
-		return
+		return ""
 	}
 
 	stackMgr := prAPI.StackManager()
@@ -334,11 +339,11 @@ func registerNativeStack(ctx context.Context, prAPI api.PullRequester, options R
 		if options.Stack == "true" {
 			log.ForContext(ctx).Warn("native stacks requested but not supported by this GitHub instance")
 		}
-		return
+		return ""
 	}
 
 	if !stackAvailable(ctx, stackMgr, options, options.RepoPath) {
-		return
+		return ""
 	}
 
 	prNumbers := make([]int, 0, len(changes))
@@ -346,7 +351,7 @@ func registerNativeStack(ctx context.Context, prAPI api.PullRequester, options R
 		id, err := strconv.Atoi(change.pr.ID)
 		if err != nil {
 			log.ForContext(ctx).WithError(err).Warn("failed to parse PR number for stack registration")
-			return
+			return ""
 		}
 		prNumbers = append(prNumbers, id)
 	}
@@ -354,9 +359,10 @@ func registerNativeStack(ctx context.Context, prAPI api.PullRequester, options R
 	stack, err := stackMgr.CreateOrUpdateStack(ctx, prNumbers)
 	if err != nil {
 		log.ForContext(ctx).WithError(err).Warn("failed to register native stack")
-		return
+		return ""
 	}
 	log.ForContext(ctx).WithField("stackID", stack.ID).WithField("prCount", len(stack.PRs)).Debug("registered native stack")
+	return stack.ID
 }
 
 const stackCacheTTL = 24 * time.Hour
@@ -590,6 +596,30 @@ func extractChanges(ctx context.Context, repo lgit.Repository, base, head plumbi
 	}
 }
 
+// retryAfterHostKeyFix runs op, and when it fails over an SSH host key, tries to
+// resolve that and runs op once more.
+//
+// A fix that does not succeed replaces op's error, because it is the actionable
+// one: go-git reports only that the key did not match, while the fix attempt says
+// what to do about it, and in batch mode that message is the entire diagnostic.
+// Dropping it left the caller with nothing to act on.
+func retryAfterHostKeyFix(host string, op func() error) error {
+	err := op()
+	if err == nil || err == git.NoErrAlreadyUpToDate {
+		return err
+	}
+	if fixErr := fixHostKey(err, host); fixErr != nil {
+		return fixErr
+	}
+	return op()
+}
+
+// fixHostKey is a seam so that tests can exercise the retry without a host they can
+// actually reach.
+var fixHostKey = handleSSHHostKeyError
+
+// handleSSHHostKeyError returns err unchanged when it is not about a host key, so
+// that only host key problems are given a second attempt.
 func handleSSHHostKeyError(err error, endpointHost string) error {
 	host, isMismatch, ok := mssh.IsKnownHostsError(err)
 	if !ok {

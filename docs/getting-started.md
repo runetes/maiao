@@ -66,10 +66,18 @@ Maiao auto-detects your provider from the remote URL for known hosts:
 - `bitbucket.org` → Bitbucket Cloud
 - `origin.cursor.com` → Cursor Origin
 
-For self-hosted instances, Maiao prompts you on first use and saves the choice:
+For self-hosted instances, Maiao prompts you on first use and saves the choice to
+the repository:
 
 ```bash
 git config maiao.provider gitlab  # or: github, gitea, forgejo, bitbucket, origin
+```
+
+If you work across several repositories on the same self-hosted host, set it once
+globally instead and every repository will pick it up:
+
+```bash
+git config --global maiao.provider gitlab
 ```
 
 ### Authentication
@@ -180,6 +188,169 @@ git review
 
 Supported keychains: [99designs/keyring](https://pkg.go.dev/github.com/99designs/keyring)
 
+## 🤖 Non-interactive use
+
+CI jobs, scripts and coding agents run Maiao with nobody available to answer a
+question. Maiao detects this — when stdin is not a terminal it enters **batch
+mode**, where it never prompts. Instead of asking, it fails and names the setting
+that would have made the question unnecessary.
+
+Force it either way with `--batch` / `--batch=false`.
+
+Batch mode only changes what happens *instead of* a prompt. It does not skip any
+verification, and it does not make Maiao assume an answer.
+
+### Output streams
+
+Diagnostics — progress, prompts, guidance and errors — go to **stderr**. stdout is
+reserved for output meant to be read by a program. Redirecting stderr away is
+therefore safe for a script, and `2>&1` is what you want when you are reading it
+yourself.
+
+### Exit statuses
+
+Maiao distinguishes failures it expects a caller to handle differently:
+
+| Status | Meaning | What to do |
+|---|---|---|
+| 0 | The review completed | Nothing. Zero changes is also a success |
+| 1 | Any other failure | Read stderr |
+| 2 | No usable credentials, or the host rejected them | Provide a token; retrying changes nothing |
+| 3 | The rebase stopped before the reviews were created | Resolve the conflict and `git rebase --continue`, which finishes the review |
+| 4 | An answer was needed and there was no terminal to ask on | Apply the setting the message names |
+| 5 | The host presented a different SSH key than the one on record | Stop. See [SSH host key error](#ssh-host-key-error) |
+
+Non-zero still means failure, so `if ! git review` keeps working.
+
+Status 3 is worth knowing about even interactively: `git review` rebases before
+submitting, and if that rebase stops there is nothing on the remote yet. The
+reviews are created by the step git runs at the end of the rebase, so finishing the
+rebase is what completes them.
+
+### Machine-readable results
+
+`--json` prints what the review did to stdout, and nothing else:
+
+```bash
+git review --json
+```
+
+```json
+{
+  "changes": [
+    {
+      "change_id": "I8f3c2a1b5e9d7f6a4c3b2a1d0e9f8c7b6a5d4e3f",
+      "branch": "maiao.I8f3c2a1b5e9d7f6a4c3b2a1d0e9f8c7b6a5d4e3f",
+      "url": "https://github.com/org/repo/pull/101",
+      "id": "101",
+      "status": "created"
+    }
+  ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `changes[].change_id` | The `Change-Id` trailer, stable across rebases and amends, so it correlates entries between runs |
+| `changes[].branch` | The remote branch the commit was pushed to |
+| `changes[].url` | The pull or merge request as a person would open it |
+| `changes[].id` | The provider's identifier — the number shown in its web interface. A string, because a provider is not obliged to use integers |
+| `changes[].status` | `created` or `updated` |
+| `stack_id` | The stack the provider recorded, for providers that model one natively. Absent otherwise |
+| `error` | Why the review did not complete. **Absent when it did** |
+
+`changes` is ordered as the pull requests are stacked, so the first entry targets
+your branch and each later one targets the entry before it. A run with nothing to
+review prints `{"changes": []}`.
+
+#### Failures
+
+A failed review still prints its result, because a review can fail after it has
+already created some of the pull requests — those exist, and a caller that cannot
+see them has no way to tell whether a retry is resuming or starting over.
+
+```json
+{
+  "changes": [
+    {
+      "change_id": "I8f3c2a1b5e9d7f6a4c3b2a1d0e9f8c7b6a5d4e3f",
+      "branch": "maiao.I8f3c2a1b5e9d7f6a4c3b2a1d0e9f8c7b6a5d4e3f",
+      "url": "https://github.com/org/repo/pull/101",
+      "id": "101",
+      "status": "created"
+    }
+  ],
+  "error": {
+    "kind": "auth",
+    "code": 2,
+    "message": "unable to find token for api.github.com"
+  }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `kind` | The failure class: `error`, `auth`, `rebase_incomplete`, `input_required` or `host_key_mismatch` |
+| `code` | The process's [exit status](#exit-statuses). The two are the same by construction, so they cannot disagree |
+| `message` | The same diagnostic that appears on stderr |
+
+So a review that ran prints `error` exactly when it exits non-zero, and either is
+enough to branch on:
+
+```bash
+result=$(git review --json)
+echo "$result" | jq -r '.changes[].url'   # whatever was submitted, success or not
+echo "$result" | jq -e -r '.error.kind // empty' && exit 1
+```
+
+One exception: an invalid command line — an unknown flag, too many arguments — is
+answered with usage on stderr and no JSON, because there was no review to report
+on. Treat empty stdout with a non-zero status as that case.
+
+### Configuring away the prompts
+
+Set these once and Maiao runs unattended:
+
+```bash
+# Install the commit-msg hook everywhere, without ever asking
+git review install --global
+
+# Say what a self-hosted host is, for every repository at once
+git config --global maiao.provider gitlab
+
+# Provide credentials (see Authentication above)
+export GITHUB_TOKEN=...
+```
+
+One question is deliberately not configured away: if the repository's
+`commit-msg` hook belongs to another tool, Maiao will not edit that file with
+nobody to ask. It installs its own hook beside it, then fails with exit status 4
+and prints the one line to add. See
+[When another tool already owns the commit-msg hook](#when-another-tool-already-owns-the-commit-msg-hook).
+
+### Host keys
+
+Record the host keys when you build the image or sandbox, not when you run a
+review:
+
+```dockerfile
+RUN mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
+```
+
+Doing it at build time means the key is fixed by someone who can verify it, and
+every later run compares against it.
+
+If you cannot pre-seed, `--trust-new-ssh-hosts` (or
+`MAIAO_TRUST_NEW_SSH_HOSTS=1`) lets Maiao accept the key of a host it has no
+record of. This is trust on first use: you are trusting whichever key answers.
+It is off by default.
+
+Neither the flag nor the environment variable has any effect when the key
+**changed** rather than being unknown. A changed key is indistinguishable from an
+interception, and resolving it means discarding a key that was known to be good,
+so Maiao always fails and leaves `known_hosts` untouched. Resolve it yourself as
+described under [SSH host key error](#ssh-host-key-error).
+
 ## 🚀 First Time Setup
 
 ### 1. Initialize Repository
@@ -215,6 +386,38 @@ Worktrees need nothing extra: they share the main repository's hooks.
 
 This is the recommended setup for CI and for AI agents, which create
 repositories and worktrees often and cannot answer an interactive prompt.
+
+#### When another tool already owns the commit-msg hook
+
+Hook managers such as husky, lefthook and pre-commit install their own
+`commit-msg` hook, in exactly the place Maiao's belongs. Git runs one hook per
+event, so both are needed and neither may be thrown away.
+
+Maiao never replaces a hook it did not write. It installs its own beside it as
+`maiao-commit-msg` and offers to add a single line to yours:
+
+```console
+$ git review install
+.husky/commit-msg was installed by something else. Add a line to it that also runs maiao's hook? [y/N] y
+Installed the commit message hook at .husky/maiao-commit-msg, and added a call to it to .husky/commit-msg
+```
+
+The line goes directly after the shebang, so it is reached even by a hook that
+ends in `exit 0` or hands over with `exec`, and it locates Maiao's hook relative
+to your own so it keeps working in a worktree, under `core.hooksPath`, and inside
+a template directory:
+
+```sh
+"$(dirname -- "$0")/maiao-commit-msg" "$1" || exit 1
+```
+
+Declining changes nothing and prints the line for you to add yourself. A hook
+that is not a shell script is never edited — Maiao says where its own hook is and
+leaves the wiring to you. `git review install --force` replaces the existing hook
+instead, which is the one way to lose it.
+
+The same applies to a `commit-msg` hook in your own `init.templateDir`, where
+replacing it would reach every repository you create from then on.
 
 ### 2. Verify Installation
 
@@ -487,6 +690,17 @@ that setting, so reinstalling is enough. Note that a *relative* `core.hooksPath`
 is resolved against the top of the working tree, so each worktree has its own
 hooks directory and needs the hook installed separately.
 
+The other cause is a hook at that path that belongs to something else, and so
+never adds a `Change-Id`. Look at what is there:
+
+```bash
+cat "$(git rev-parse --git-path hooks/commit-msg)"
+```
+
+If it is somebody else's, `git review install` will keep it and offer to chain
+Maiao's hook to it — see
+[When another tool already owns the commit-msg hook](#when-another-tool-already-owns-the-commit-msg-hook).
+
 ### "multiple URLs not supported"
 
 **Problem:** Git remote has multiple URLs configured
@@ -530,9 +744,48 @@ export BITBUCKET_TOKEN=your-app-password
 
 ### SSH host key error
 
-**Problem:** SSH host key not found or has changed (common when connecting to a new provider for the first time)
+**Problem:** SSH host key not found, or the key has changed.
 
-**Solution:** Maiao will automatically prompt you to resolve this via `ssh-keyscan`. Accept the prompt to add the host key.
+These are two different problems and Maiao treats them differently.
+
+**Key not found** is normal the first time you connect to a host. Maiao offers to
+add it with `ssh-keyscan`; accept the prompt. In batch mode it refuses instead,
+because fetching a key over the network and trusting it unattended is exactly what
+an interception needs — see [Non-interactive use](#-non-interactive-use).
+
+**Key changed** means the host presented a different key than the one on record.
+That happens when a server is legitimately rekeyed, and equally when the
+connection is being intercepted, and Maiao cannot tell the two apart. It never
+resolves this on its own. Verify the new key through a channel you trust — your
+provider's documentation or status page — then drop the old one:
+
+```bash
+ssh-keygen -R git.example.com -f ~/.ssh/known_hosts
+```
+
+Pass `-f` explicitly: `ssh-keygen` locates your home directory through the passwd
+database and ignores `$HOME`, so without it you may edit a different file than the
+one Maiao reads.
+
+A mismatch exits with status 5, kept separate from every other failure precisely so
+an automated caller stops rather than retries.
+
+### "the rebase did not complete"
+
+**Problem:** `git review` rebases your commits before submitting them, and that
+rebase stopped — a conflict, usually. Nothing has been pushed.
+
+**Solution:**
+```bash
+git status              # see what conflicts
+# resolve the conflicts, then
+git add <files>
+git rebase --continue
+```
+
+Finishing the rebase creates the reviews: Maiao adds itself as the last step of the
+rebase, so it runs once the rebase gets there. You do not need to run `git review`
+again. This exits with status 3.
 
 ### "reference not found"
 
@@ -564,12 +817,18 @@ git commit --fixup <correct-hash>
 
 **Solution:**
 ```bash
-# Check hook permissions
-chmod +x .git/hooks/commit-msg
+hook="$(git rev-parse --git-path hooks/commit-msg)"
 
-# Verify hook content
-cat .git/hooks/commit-msg
+# Check hook permissions
+chmod +x "$hook"
+
+# Verify hook content: it should mention Change-Id, or call maiao-commit-msg
+cat "$hook"
 ```
+
+A hook that mentions neither belongs to another tool and will never add a
+`Change-Id`. See
+[When another tool already owns the commit-msg hook](#when-another-tool-already-owns-the-commit-msg-hook).
 
 ## 💡 Best Practices
 

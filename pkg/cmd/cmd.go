@@ -9,6 +9,8 @@ import (
 	"github.com/99designs/keyring"
 	"github.com/adevinta/maiao/pkg/git"
 	"github.com/adevinta/maiao/pkg/log"
+	"github.com/adevinta/maiao/pkg/prompt"
+	mssh "github.com/adevinta/maiao/pkg/ssh"
 	"github.com/adevinta/maiao/pkg/version"
 
 	"github.com/sirupsen/logrus"
@@ -46,6 +48,16 @@ func NewCommand() *cobra.Command {
 			default:
 				return fmt.Errorf("unexpected log level %s expecting 0-5", cmd.Flag("verbose").Value.String())
 			}
+			prompt.SetBatch(cmd.Flag("batch").Value.String() == "true")
+			mssh.SetTrustNewHosts(cmd.Flag("trust-new-ssh-hosts").Value.String() == "true")
+			// From here on a failure is a runtime one, and the flag list says nothing
+			// useful about it. Printing it buried the message that did, which matters
+			// most where that message is the entire diagnostic: batch mode.
+			//
+			// Set here rather than on the command, so a genuine misuse — an unknown flag,
+			// too many arguments, a bad verbosity — is still answered with usage. Cobra
+			// validates arguments before this runs.
+			cmd.Root().SilenceUsage = true
 			return nil
 		},
 		Args: func(cmd *cobra.Command, args []string) error {
@@ -87,6 +99,9 @@ func NewCommand() *cobra.Command {
 	rootCmd.PersistentFlags().String("remote", "", "Specifies the remote the review should be done on. By default the tracking remote of the target branch is used")
 	rootCmd.PersistentFlags().BoolP("work-in-progress", "w", false, "Mark the review as work in progress, or draft in compatible remotes. This flag is exclusively effective when creating Pull Requests")
 	rootCmd.PersistentFlags().BoolP("ready", "W", false, "Mark the review as ready in compatible remotes (i.e. removing the work in progress or draft flag)")
+	rootCmd.PersistentFlags().Bool("batch", prompt.Batch(), "Never prompt, and fail with what to configure instead. Defaults to true when stdin is not a terminal")
+	rootCmd.PersistentFlags().Bool("trust-new-ssh-hosts", mssh.TrustNewHosts(), "Accept the SSH key of a host missing from known_hosts without asking. Never applies to a key mismatch. Also settable with "+mssh.TrustNewHostsEnvVar)
+	rootCmd.PersistentFlags().Bool("json", false, `Describe the reviewed changes as JSON on stdout. Diagnostics stay on stderr. A failed review still reports the changes it submitted, plus an "error" object naming the failure`)
 	installCmd := &cobra.Command{
 		Use:   "install",
 		Short: "Installs commit message hook to the repository",
@@ -94,10 +109,15 @@ func NewCommand() *cobra.Command {
 
 With --global, installs it for every repository instead: new and cloned
 repositories get it from git through init.templateDir, and existing ones get it
-the first time you run git review in them, without being asked.`,
+the first time you run git review in them, without being asked.
+
+A commit message hook installed by something else, such as husky or lefthook, is
+never replaced. Maiao installs its own beside it and offers to add one line to
+the existing hook so that both run.`,
 		RunE: install,
 	}
 	installCmd.Flags().Bool("global", false, "Install the hook for every repository rather than only this one")
+	installCmd.Flags().Bool("force", false, "Replace a commit message hook installed by something else, rather than keeping it and running maiao's as well")
 	rootCmd.AddCommand(
 		installCmd,
 		&cobra.Command{
