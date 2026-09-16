@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.5.0](https://github.com/runetes/maiao/compare/maiao-v1.4.1...maiao-v1.5.0) (2026-09-16)
+
+
+### Features
+
+* add batch mode for non-interactive execution ([7dba15c](https://github.com/runetes/maiao/commit/7dba15c58a9e9a7296c61323ba99b6fcf77bd18c))
+* add global hook auto-install to remove install prompt ([e764bcd](https://github.com/runetes/maiao/commit/e764bcd8954d3c315b02b1aafa1db9286e3360ba))
+* add JSON output for machine-readable results ([aaf1f8d](https://github.com/runetes/maiao/commit/aaf1f8dbb1d451544ab944f1141bc614e9b416a7))
+* use distinct exit codes per failure mode ([c241051](https://github.com/runetes/maiao/commit/c24105123834847f9db1fc1fa6f4e58c4b8fe114))
+
+
+### Bug Fixes
+
+* honor core.hooksPath when resolving git hooks ([ae3de88](https://github.com/runetes/maiao/commit/ae3de885f108f5169b4ab224e32a11778ec0f44a))
+* keep a commit message hook maiao did not write ([fcca916](https://github.com/runetes/maiao/commit/fcca9162a65c50c2b02b596634ef78611fc40c4b))
+* remove SSH host keys from the file they are added to ([c12b706](https://github.com/runetes/maiao/commit/c12b706d94dd8786dcd3f72c898ddcb8d659491b))
+* resolve hook path in manual install instructions ([adde0d3](https://github.com/runetes/maiao/commit/adde0d339b9bf8cfe57b014f78d7b3f3381dbe13))
+* resolve hook path in manual install instructions ([c551e0d](https://github.com/runetes/maiao/commit/c551e0da05fd8eca7dcc7c29531fecba748935fb))
+* stop printing usage after a runtime failure ([8c700ff](https://github.com/runetes/maiao/commit/8c700ff1881f642fb9d0bc7569eb7380a51d619e))
+
 ## [1.4.1](https://github.com/runetes/maiao/compare/maiao-v1.4.0...maiao-v1.4.1) (2026-09-03)
 
 
