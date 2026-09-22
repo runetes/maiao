@@ -809,6 +809,23 @@ export BITBUCKET_USERNAME=your-email@example.com
 export BITBUCKET_TOKEN=your-app-password
 ```
 
+### SSH key not accepted
+
+**Problem:** the push or fetch fails to authenticate, or Maiao reports
+`SSH agent requested but SSH_AUTH_SOCK not-specified` where plain `git` works.
+
+Maiao reads `~/.ssh/config` the way `ssh` does, so an `IdentityFile` for the host
+is used whether or not an agent is running, and `IdentitiesOnly` is honoured.
+Nothing needs to be loaded into an agent.
+
+Two exceptions. `HOME` decides which config is read, as it does for the netrc.
+And a config using an option Maiao's reader does not implement — `ForwardAgent`,
+`ProxyCommand`, `ProxyJump`, `HostKeyAlgorithms`, `CertificateFile`,
+`PubkeyAuthentication`, `KnownHostsCommand` — is skipped entirely, including the
+`IdentityFile` in it; Maiao then falls back to the agent and says so at `-v 3`.
+A `Host *` block counts. Move such an option under the hosts that need it, or
+`ssh-add` the key.
+
 ### SSH host key error
 
 **Problem:** SSH host key not found, or the key has changed.

@@ -15,6 +15,7 @@ require (
 	github.com/spf13/afero v1.14.0
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.11.1
+	github.com/tjamet/ssh-client-config v0.0.0-20250412002727-c4b59d5038a0
 	golang.org/x/crypto v0.37.0
 	golang.org/x/mod v0.26.0
 	golang.org/x/oauth2 v0.29.0
