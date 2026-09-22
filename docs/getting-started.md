@@ -131,6 +131,11 @@ machine your-gitea-instance.com
   password <your-access-token>
 ```
 
+An entry with a `login` is sent as basic auth, which Gitea and Forgejo accept for
+either an access token or an account password. `GITEA_TOKEN` and a `~/.netrc`
+entry with no `login` are sent as `Authorization: token`, which only a token
+satisfies. Prefer a token: it is scoped, and revoking it costs you nothing else.
+
 #### Forgejo / Codeberg
 
 ```bash
