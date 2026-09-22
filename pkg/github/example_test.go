@@ -14,7 +14,7 @@ func ExampleNewClient() {
 	if err != nil {
 		Logger.Errorf("failed to create github client: %s", err.Error())
 	}
-	repo, _, err := client.Repositories.Get(context.Background(), "adevinta", "maiao")
+	repo, _, err := client.Repositories.Get(context.Background(), "runetes", "maiao")
 	if err != nil {
 		Logger.Errorf("failed to get github repository: %s", err.Error())
 	}

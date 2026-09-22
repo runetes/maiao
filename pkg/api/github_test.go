@@ -357,11 +357,12 @@ func TestGitHubUpsert(t *testing.T) {
 
 func TestLinkedTopicIssues(t *testing.T) {
 	g := GitHub{
-		Host: "github.com",
+		Host:  "github.com",
+		Owner: "ble",
 	}
 	assert.Equal(
 		t,
-		"https://github.com/search?q=is%3Apr+is%3Aopen+%22topic-sha%22&type=issues",
+		"https://github.com/search?q=is%3Apr+is%3Aopen+%22topic-sha%22+org%3Able&type=issues",
 		g.LinkedTopicIssues("topic-sha"),
 	)
 }

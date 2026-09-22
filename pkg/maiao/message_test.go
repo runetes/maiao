@@ -38,7 +38,7 @@ func TestHTMLFormatterSectionIncludesSummary(t *testing.T) {
 func TestTopicDetailsProvidesLink(t *testing.T) {
 	prAPI := &linkedTopicIssuesFunc{
 		linkedTopicIssuesFunc: func(topicSearchString string) string {
-			assert.Equal(t, "89889b28e9672bff47fa4286f4aff4a80e09eade", topicSearchString)
+			assert.Equal(t, `'some topic'`, topicSearchString)
 			return "https://search.example.com/topic"
 		},
 	}
@@ -53,7 +53,7 @@ func TestTopicDetailsProvidesLink(t *testing.T) {
 			`Topic: <a href="https://search.example.com/topic">some topic</a>`,
 			"</details>",
 		},
-		topicDetails(api.HTMLBodyFormatter{}, prAPI, "some topic"),
+		topicDetails(api.HTMLBodyFormatter{}, prAPI, `some topic`),
 	)
 }
 
