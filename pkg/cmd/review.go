@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/spf13/cobra"
@@ -15,11 +14,8 @@ import (
 )
 
 const (
-	hookMissing = "commit message hook is missing, do you want to install it automatically?"
-	// noAutoInstallHookFmt takes the hooks directory, the resolved hook path and the
-	// hook download URL. The path is resolved through git.HookPath so the command
-	// works in worktrees, where .git is a file pointing at the common git dir.
-	noAutoInstallHookFmt = "You are missing change ids in your commits. \nPlease install the commit hook by running\n`mkdir -p %[1]s && curl -o %[2]s %[3]s && chmod +x %[2]s`"
+	hookMissing      = "commit message hook is missing, do you want to install it automatically?"
+	noAutoInstallFmt = "You are missing change ids in your commits.\nPlease install the commit hook by running `git review install`"
 )
 
 func review(cmd *cobra.Command, args []string) error {
@@ -116,7 +112,7 @@ from now on, or `+"`git review install`"+` for this one only.
 Expected at %s`, prompt.ErrNoInput, hookPath)
 		}
 		if !confirm(hookMissing) {
-			fmt.Fprintf(os.Stderr, noAutoInstallHookFmt+"\n", filepath.Dir(hookPath), hookPath, gerrit.HookURL())
+			fmt.Fprintln(os.Stderr, noAutoInstallFmt)
 			return false, nil
 		}
 	}

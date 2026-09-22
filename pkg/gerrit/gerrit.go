@@ -1,9 +1,8 @@
 package gerrit
 
 import (
+	_ "embed"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 
@@ -15,14 +14,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const (
-	gitHubURL         = "https://raw.githubusercontent.com"
-	repo              = "GerritCodeReview/gerrit"
-	commitHash        = "43d985a2a15a7d59d42e19ffd60d41c0de6c3e59"
-	commitMsgHookPath = "gerrit-server/src/main/resources/com/google/gerrit/server/tools/root/hooks/commit-msg"
-)
-
-var commitMsgHookURL = fmt.Sprintf("%s/%s/%s/%s", gitHubURL, repo, commitHash, commitMsgHookPath)
+//go:embed commit-msg.sh
+var commitMsgHook []byte
 
 type Interface interface {
 	Installed() bool
@@ -31,10 +24,6 @@ type Interface interface {
 
 type Gerrit struct {
 	gitDir string
-}
-
-func HookURL() string {
-	return commitMsgHookURL
 }
 
 // Installed reports whether commits in this repository will get a Change-Id from
@@ -59,8 +48,8 @@ func (g *Gerrit) Install() error {
 	return InstallAt(git.HookPath(g.gitDir, git.CommitMsgHook))
 }
 
-// InstallAt downloads the gerrit commit message hook and writes it, executable,
-// at path, creating the parent directory if needed.
+// InstallAt writes the embedded gerrit commit message hook, executable, at
+// path, creating the parent directory if needed.
 //
 // Unlike Install it does not resolve where the hook belongs, so it can also
 // write to locations that are not a repository's hooks directory, such as a git
@@ -72,15 +61,8 @@ func (g *Gerrit) Install() error {
 func InstallAt(path string) error {
 	l := log.Logger.WithFields(logrus.Fields{
 		"commit-hook path": path,
-		"download-url":     commitMsgHookURL,
 	})
-	l.Debug("downloading commit message hook")
-	r, err := http.Get(commitMsgHookURL)
-	if err != nil {
-		return errors.Wrap(err, fmt.Sprintf("failed to download commit message hook from %s", commitMsgHookURL))
-	}
-	defer r.Body.Close()
-	l.Debugf("downloaded commit message hook")
+	l.Debug("installing commit message hook")
 	d := filepath.Dir(path)
 	s, err := system.DefaultFileSystem.Stat(d)
 	if err != nil {
@@ -103,7 +85,7 @@ func InstallAt(path string) error {
 		return errors.Wrap(err, fmt.Sprintf("failed to create commit message hook file %s", path))
 	}
 	defer fd.Close()
-	_, err = io.Copy(fd, r.Body)
+	_, err = fd.Write(commitMsgHook)
 	if err != nil {
 		return errors.Wrap(err, fmt.Sprintf("failed to write commit message hook file %s", path))
 	}
