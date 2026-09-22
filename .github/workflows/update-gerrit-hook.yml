@@ -1,0 +1,45 @@
+name: Update Gerrit commit-msg hook
+
+on:
+  schedule:
+    - cron: "23 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-hook:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Fetch latest hook from upstream
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: ./scripts/update-gerrit-hook.sh
+
+    - name: Check for changes
+      id: diff
+      run: |
+        if git diff --quiet pkg/gerrit/commit-msg.sh; then
+          echo "changed=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Create pull request
+      if: steps.diff.outputs.changed == 'true'
+      uses: peter-evans/create-pull-request@v7
+      with:
+        token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        commit-message: "chore: update Gerrit commit-msg hook to latest upstream"
+        branch: update-gerrit-hook
+        title: "chore: update Gerrit commit-msg hook to latest upstream"
+        body: |
+          The daily check found a newer version of the Gerrit
+          [commit-msg hook](https://github.com/GerritCodeReview/gerrit/blob/master/resources/com/google/gerrit/server/tools/root/hooks/commit-msg).
+
+          This PR updates the embedded copy in `pkg/gerrit/commit-msg.sh`.
+        labels: dependencies
