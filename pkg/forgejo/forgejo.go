@@ -32,12 +32,7 @@ func NewForgejoUpserter(ctx context.Context, endpoint *transport.Endpoint) (*For
 
 	apiBase := fmt.Sprintf("https://%s/api/v1", endpoint.Host)
 
-	client := &http.Client{
-		Transport: &tokenTransport{
-			token:    cred.Password,
-			delegate: http.DefaultTransport,
-		},
-	}
+	client := &http.Client{Transport: gitea.NewAuthTransport(cred, nil)}
 
 	return &Forgejo{
 		BaseClient: gitea.BaseClient{
@@ -48,14 +43,4 @@ func NewForgejoUpserter(ctx context.Context, endpoint *transport.Endpoint) (*For
 			APIBase:    apiBase,
 		},
 	}, nil
-}
-
-type tokenTransport struct {
-	token    string
-	delegate http.RoundTripper
-}
-
-func (t *tokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	req.Header.Set("Authorization", "token "+t.token)
-	return t.delegate.RoundTrip(req)
 }

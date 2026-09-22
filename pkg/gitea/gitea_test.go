@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/adevinta/maiao/pkg/api"
+	"github.com/adevinta/maiao/pkg/credentials"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -278,17 +279,55 @@ func TestNewGiteaUpserterNoCredentials(t *testing.T) {
 	assert.Nil(t, g)
 }
 
-func TestTokenTransportSetsHeader(t *testing.T) {
-	var capturedHeader string
-	transport := &tokenTransport{
-		token: "my-secret-token",
-		delegate: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
-			capturedHeader = r.Header.Get("Authorization")
-			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(""))}, nil
-		}),
-	}
+// capturedAuth sends one request through tr and reports the Authorization
+// header the server would have seen.
+func capturedAuth(t *testing.T, cred *credentials.Credentials) *http.Request {
+	t.Helper()
+	var captured *http.Request
+	tr := NewAuthTransport(cred, roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		captured = r
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(""))}, nil
+	}))
 
-	req, _ := http.NewRequest(http.MethodGet, "https://gitea.example.com/api/v1/repos", nil)
-	transport.RoundTrip(req)
-	assert.Equal(t, "token my-secret-token", capturedHeader)
+	req, err := http.NewRequest(http.MethodGet, "https://gitea.example.com/api/v1/repos", nil)
+	require.NoError(t, err)
+	_, err = tr.RoundTrip(req)
+	require.NoError(t, err)
+	require.NotNil(t, captured)
+	return captured
+}
+
+func TestAuthTransportSendsATokenAsATokenHeader(t *testing.T) {
+	req := capturedAuth(t, &credentials.Credentials{Password: "my-secret-token"})
+
+	assert.Equal(t, "token my-secret-token", req.Header.Get("Authorization"))
+}
+
+// TestAuthTransportSendsANamedCredentialAsBasicAuth covers the entry maiao's own
+// documentation tells users to write, `login <user> password <secret>`. Gitea
+// checks a basic password as an access token before it tries it as a password
+// (services/auth/basic.go), so basic auth carries both kinds of secret, where
+// `Authorization: token` carries only one.
+func TestAuthTransportSendsANamedCredentialAsBasicAuth(t *testing.T) {
+	req := capturedAuth(t, &credentials.Credentials{Username: "me", Password: "my-secret"})
+
+	user, password, ok := req.BasicAuth()
+	require.True(t, ok, "a credential with a username must go out as basic auth")
+	assert.Equal(t, "me", user)
+	assert.Equal(t, "my-secret", password)
+}
+
+// TestAuthTransportLeavesTheCallersRequestAlone matters because a RoundTripper
+// may be handed the same request again on a retry or redirect.
+func TestAuthTransportLeavesTheCallersRequestAlone(t *testing.T) {
+	tr := NewAuthTransport(&credentials.Credentials{Password: "t"}, roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(""))}, nil
+	}))
+
+	req, err := http.NewRequest(http.MethodGet, "https://gitea.example.com/api/v1/repos", nil)
+	require.NoError(t, err)
+	_, err = tr.RoundTrip(req)
+
+	require.NoError(t, err)
+	assert.Empty(t, req.Header.Get("Authorization"))
 }

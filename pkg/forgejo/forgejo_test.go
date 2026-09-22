@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/adevinta/maiao/pkg/api"
+	"github.com/adevinta/maiao/pkg/credentials"
 	"github.com/adevinta/maiao/pkg/gitea"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/stretchr/testify/assert"
@@ -141,17 +142,21 @@ func TestNewForgejoUpserterNoCredentials(t *testing.T) {
 	assert.Nil(t, f)
 }
 
-func TestTokenTransportSetsHeader(t *testing.T) {
+// TestForgejoAuthenticatesThroughTheSharedTransport pins the sharing itself:
+// Forgejo used to carry its own copy, and the point of deleting it is that
+// Codeberg credentials keep behaving like Gitea ones.
+func TestForgejoAuthenticatesThroughTheSharedTransport(t *testing.T) {
 	var capturedHeader string
-	tr := &tokenTransport{
-		token: "my-secret-token",
-		delegate: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	tr := gitea.NewAuthTransport(&credentials.Credentials{Password: "my-secret-token"},
+		roundTripperFunc(func(r *http.Request) (*http.Response, error) {
 			capturedHeader = r.Header.Get("Authorization")
 			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(""))}, nil
-		}),
-	}
+		}))
 
-	req, _ := http.NewRequest(http.MethodGet, "https://codeberg.org/api/v1/repos", nil)
-	tr.RoundTrip(req)
+	req, err := http.NewRequest(http.MethodGet, "https://codeberg.org/api/v1/repos", nil)
+	require.NoError(t, err)
+	_, err = tr.RoundTrip(req)
+
+	require.NoError(t, err)
 	assert.Equal(t, "token my-secret-token", capturedHeader)
 }
