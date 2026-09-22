@@ -75,6 +75,44 @@ git config maiao.useNativeStack true   # always register; warn if unavailable
 git config maiao.useNativeStack false  # disable entirely
 ```
 
+## Coding agents
+
+Maiao ships a [Claude Code](https://claude.com/claude-code) skill teaching an agent
+the workflow: how to shape commits so each one is worth a pull request, and how to
+create, update, reorder and withdraw the changes in a stack.
+
+```bash
+/plugin marketplace add runetes/maiao
+/plugin install maiao@maiao
+```
+
+Or install the copy embedded in the binary, which is guaranteed to describe the
+maiao you are actually running and stamps the version it came from into `SKILL.md`:
+
+```bash
+git review install --skill               # into ~/.claude/skills/git-review
+git review install --skill .claude       # into this project instead
+```
+
+Or, to pull it into a marketplace manifest you already keep, as a `git-subdir` source:
+
+```json
+{
+  "name": "maiao",
+  "source": {
+    "source": "git-subdir",
+    "url": "https://github.com/runetes/maiao.git",
+    "path": "skills/maiao"
+  }
+}
+```
+
+The skill is then invoked as `/maiao:git-review`. Pair it with
+`git review install --global`, a token in the environment, and — on a self-hosted
+host — `git config --global maiao.provider`, so no run of `git review` ever stops
+to ask a question the agent cannot answer. See
+[Non-interactive use](getting-started.md#-non-interactive-use).
+
 ## Documentation
 
 - **[Getting Started](getting-started.md)** - Installation and workflow guide

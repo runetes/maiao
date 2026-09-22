@@ -416,7 +416,20 @@ git review install
 
 This installs a Git hook that automatically adds a unique `Change-Id` to every commit message.
 
-To install it once for every repository instead, so you are never asked again:
+To install the git review skill for a coding assistant, so it works the way this
+guide describes rather than from recall:
+
+```bash
+git review install --skill               # into ~/.claude/skills/git-review
+git review install --skill .claude       # into this project instead
+```
+
+The skill is a directory: `SKILL.md` and the companion files its links name, all
+embedded in the binary, so it always matches the maiao installed. The last line of
+`SKILL.md` records which version wrote it. Reinstall it after upgrading maiao —
+the directory is replaced, so nothing an older version left behind survives.
+
+To install the hook once for every repository instead, so you are never asked again:
 
 ```bash
 git review install --global
@@ -918,7 +931,23 @@ Write clear commit messages:
 ❌ Bad:  "fix stuff"
 ```
 
-### 5. Use Fixups Liberally
+### 5. Carve Commits by Hunk, Not by File
+
+When one working tree holds two concerns, `git add .` puts both in one pull request and
+`git add -p` needs a terminal. [git-surgeon](https://github.com/raine/git-surgeon) stages
+by hunk without prompting, which is what makes an atomic commit reachable from a script or
+an agent:
+
+```bash
+git-surgeon hunks                                  # hunk ids, per file
+git-surgeon commit 7468249 25c63c5 -m "fix: ..."   # stage exactly those, and commit
+```
+
+`fold`, `move` and `reword` restructure commits already made without an interactive rebase.
+Avoid `split` on a commit already under review: it drops the `Change-Id`, the hook issues
+new ones for both halves, and the original pull request is left orphaned.
+
+### 6. Use Fixups Liberally
 Don't amend commits directly; use fixups:
 ```bash
 ✅ git commit --fixup <hash>  # Trackable, rebaseable

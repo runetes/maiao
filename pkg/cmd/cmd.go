@@ -103,7 +103,7 @@ func NewCommand() *cobra.Command {
 	rootCmd.PersistentFlags().Bool("trust-new-ssh-hosts", mssh.TrustNewHosts(), "Accept the SSH key of a host missing from known_hosts without asking. Never applies to a key mismatch. Also settable with "+mssh.TrustNewHostsEnvVar)
 	rootCmd.PersistentFlags().Bool("json", false, `Describe the reviewed changes as JSON on stdout. Diagnostics stay on stderr. A failed review still reports the changes it submitted, plus an "error" object naming the failure`)
 	installCmd := &cobra.Command{
-		Use:   "install",
+		Use:   "install [directory]",
 		Short: "Installs commit message hook to the repository",
 		Long: `Installs commit message hook to the repository.
 
@@ -113,9 +113,28 @@ the first time you run git review in them, without being asked.
 
 A commit message hook installed by something else, such as husky or lefthook, is
 never replaced. Maiao installs its own beside it and offers to add one line to
-the existing hook so that both run.`,
-		RunE: install,
+the existing hook so that both run.
+
+With --skill, installs the git review skill that shipped with this binary, so an
+assistant is told the workflow this maiao actually implements. The directory to
+install into follows the flag, and defaults to the one assistants read personal
+skills from.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("skill") {
+				return installSkill(cmd, args)
+			}
+			if len(args) > 0 {
+				return fmt.Errorf("install: %q is not a hook destination: the hook goes where --path says, and only --skill takes a directory", args[0])
+			}
+			return install(cmd, args)
+		},
 	}
+	installCmd.Flags().String("skill", "", "Install the git review skill instead of the hook, into the directory that follows rather than the default")
+	// So that a bare --skill means the default directory rather than an empty one.
+	// It also stops pflag consuming the directory after it, which installSkill then
+	// takes from the positional arguments instead.
+	installCmd.Flags().Lookup("skill").NoOptDefVal = defaultSkillRoot()
 	installCmd.Flags().Bool("global", false, "Install the hook for every repository rather than only this one")
 	installCmd.Flags().Bool("force", false, "Replace a commit message hook installed by something else, rather than keeping it and running maiao's as well")
 	rootCmd.AddCommand(
