@@ -17,6 +17,13 @@ import (
 //go:embed commit-msg.sh
 var commitMsgHook []byte
 
+// EmbeddedHook returns a copy of the embedded commit-msg hook script.
+func EmbeddedHook() []byte {
+	out := make([]byte, len(commitMsgHook))
+	copy(out, commitMsgHook)
+	return out
+}
+
 type Interface interface {
 	Installed() bool
 	Install() error

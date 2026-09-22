@@ -26,6 +26,28 @@ npx --no -- commitlint --edit "$1"
 `
 )
 
+func TestCurrentAt(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	system.DefaultFileSystem = fs
+	t.Cleanup(system.Reset)
+
+	t.Run("matches when content is identical", func(t *testing.T) {
+		path := "/repo/current/commit-msg"
+		system.EnsureTestFileContent(t, fs, path, string(commitMsgHook))
+		assert.True(t, CurrentAt(path))
+	})
+
+	t.Run("does not match when content differs", func(t *testing.T) {
+		path := "/repo/stale/commit-msg"
+		system.EnsureTestFileContent(t, fs, path, changeIDHook)
+		assert.False(t, CurrentAt(path))
+	})
+
+	t.Run("does not match when file is missing", func(t *testing.T) {
+		assert.False(t, CurrentAt("/repo/absent/commit-msg"))
+	})
+}
+
 func TestStateAt(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	system.DefaultFileSystem = fs

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/adevinta/maiao/pkg/gerrit"
 	lgit "github.com/adevinta/maiao/pkg/git"
 	"github.com/adevinta/maiao/pkg/prompt"
 	"github.com/adevinta/maiao/pkg/testutil"
@@ -163,16 +164,69 @@ func TestInstallGlobalExpandsTilde(t *testing.T) {
 }
 
 func TestEnsureCommitMsgHook(t *testing.T) {
-	t.Run("already installed, nothing to do", func(t *testing.T) {
+	t.Run("already installed and current, nothing to do", func(t *testing.T) {
 		testutil.IsolateHome(t)
-		// Batch off, so that "must not prompt" is proven rather than unreachable.
+		setBatch(t, false)
+		repo := testutil.InitRepo(t)
+		gitDir, err := lgit.FindGitDir(repo)
+		require.NoError(t, err)
+		installCurrentHook(t, gitDir)
+		stubConfirm(t, func(string) bool {
+			t.Error("must not prompt when the hook is current")
+			return false
+		})
+		expectNoInstall(t)
+
+		proceed, err := ensureCommitMsgHook(repo, gitDir)
+		require.NoError(t, err)
+		assert.True(t, proceed)
+	})
+
+	t.Run("installed but outdated, offers to update", func(t *testing.T) {
+		testutil.IsolateHome(t)
 		setBatch(t, false)
 		repo := testutil.InitRepo(t)
 		gitDir, err := lgit.FindGitDir(repo)
 		require.NoError(t, err)
 		installFakeHook(t, gitDir)
+		asked := false
+		stubConfirm(t, func(msg string) bool {
+			asked = true
+			assert.Equal(t, hookOutdated, msg)
+			return true
+		})
+		stubHookInstall(t)
+
+		proceed, err := ensureCommitMsgHook(repo, gitDir)
+		require.NoError(t, err)
+		assert.True(t, proceed)
+		assert.True(t, asked)
+	})
+
+	t.Run("installed but outdated and declined, review still proceeds", func(t *testing.T) {
+		testutil.IsolateHome(t)
+		setBatch(t, false)
+		repo := testutil.InitRepo(t)
+		gitDir, err := lgit.FindGitDir(repo)
+		require.NoError(t, err)
+		installFakeHook(t, gitDir)
+		stubConfirm(t, func(string) bool { return false })
+		expectNoInstall(t)
+
+		proceed, err := ensureCommitMsgHook(repo, gitDir)
+		require.NoError(t, err)
+		assert.True(t, proceed, "a stale hook still works, declining the update must not block the review")
+	})
+
+	t.Run("installed but outdated in batch mode, skips silently", func(t *testing.T) {
+		testutil.IsolateHome(t)
+		setBatch(t, true)
+		repo := testutil.InitRepo(t)
+		gitDir, err := lgit.FindGitDir(repo)
+		require.NoError(t, err)
+		installFakeHook(t, gitDir)
 		stubConfirm(t, func(string) bool {
-			t.Error("must not prompt when the hook is already installed")
+			t.Error("must not prompt in batch mode")
 			return false
 		})
 		expectNoInstall(t)
@@ -266,6 +320,13 @@ func installFakeHook(t testing.TB, gitDir string) {
 	path := lgit.HookPath(gitDir, lgit.CommitMsgHook)
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
 	require.NoError(t, os.WriteFile(path, []byte(fakeHook), 0700))
+}
+
+func installCurrentHook(t testing.TB, gitDir string) {
+	t.Helper()
+	path := lgit.HookPath(gitDir, lgit.CommitMsgHook)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
+	require.NoError(t, os.WriteFile(path, gerrit.EmbeddedHook(), 0700))
 }
 
 // expectNoInstall fails the test if the hook gets installed. It also keeps the

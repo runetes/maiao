@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/spf13/cobra"
@@ -15,6 +16,7 @@ import (
 
 const (
 	hookMissing      = "commit message hook is missing, do you want to install it automatically?"
+	hookOutdated     = "commit message hook is outdated, do you want to update it?"
 	noAutoInstallFmt = "You are missing change ids in your commits.\nPlease install the commit hook by running `git review install`"
 )
 
@@ -91,6 +93,7 @@ func ensureCommitMsgHook(repoPath, gitDir string) (bool, error) {
 	hookPath := lgit.HookPath(gitDir, lgit.CommitMsgHook)
 	switch gerrit.StateAt(hookPath) {
 	case gerrit.MaiaoHook:
+		offerHookUpdate(hookPath)
 		return true, nil
 	case gerrit.ForeignHook:
 		// Not the same question as a missing hook, and not one the auto install
@@ -120,6 +123,30 @@ Expected at %s`, prompt.ErrNoInput, hookPath)
 		return false, err
 	}
 	return true, nil
+}
+
+// offerHookUpdate silently checks whether the installed hook matches the
+// version embedded in this binary and offers to update it when it does not.
+//
+// A stale hook still works — it just misses fixes and improvements from
+// upstream. Declining is fine, so the review always proceeds.
+func offerHookUpdate(hookPath string) {
+	// In a chained setup the actual maiao hook lives beside the foreign one.
+	target := hookPath
+	chainedPath := filepath.Join(filepath.Dir(hookPath), gerrit.ChainedHookName)
+	if gerrit.CurrentAt(chainedPath) {
+		return
+	}
+	if !gerrit.CurrentAt(hookPath) {
+		// Decide which file to update: if the chained hook exists, that is ours.
+		if gerrit.StateAt(chainedPath) == gerrit.MaiaoHook {
+			target = chainedPath
+		}
+		if prompt.Batch() || !confirm(hookOutdated) {
+			return
+		}
+		_ = installHook(target)
+	}
 }
 
 func stackOption(repo *git.Repository) string {
