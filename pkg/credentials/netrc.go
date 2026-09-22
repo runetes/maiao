@@ -51,12 +51,21 @@ func (n *Netrc) CredentialForHost(host string) (*Credentials, error) {
 		return nil, err
 	}
 	machine := parsed.Machine(host)
-	if machine != nil {
-		logger.Debugf("found credentials")
-		return &Credentials{
-			Username: machine.Get("login"),
-			Password: machine.Get("password"),
-		}, nil
+	if machine == nil {
+		return nil, fmt.Errorf("failed to find credentials for host %s in netRC %s", host, n.Path)
 	}
-	return nil, fmt.Errorf("failed to find credentials for host %s in netRC %s", host, n.Path)
+	password := machine.Get("password")
+	if password == "" {
+		// Reported rather than passed on empty: a machine block written with
+		// `username:` and `password:` instead of netrc's `login` and `password`
+		// parses without error into exactly this state, and the user has no other
+		// clue that the file they wrote is being ignored.
+		logger.Infof("netrc entry has no password")
+		return nil, fmt.Errorf("machine %s in netRC %s has no password: entries read `machine <host> login <user> password <token>`, with no colons", host, n.Path)
+	}
+	logger.Debugf("found credentials")
+	return &Credentials{
+		Username: machine.Get("login"),
+		Password: password,
+	}, nil
 }

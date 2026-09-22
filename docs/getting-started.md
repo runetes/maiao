@@ -88,6 +88,12 @@ Maiao tries credentials in this order: environment variable → `~/.netrc` → g
 container, `sudo`, CI, an agent sandbox — put the file under the `HOME` the
 review runs with, not under the home of the account it runs as.
 
+A source holding no password does not end the search: maiao moves to the next
+one, and lists every reason if none of them had a token. Write netrc entries as
+below, with `login` and `password` and no colons — `username: me` parses as a
+machine with no values, and maiao then names the file instead of sending a
+request no forge will authenticate.
+
 #### GitHub / GitHub Enterprise
 
 ```bash

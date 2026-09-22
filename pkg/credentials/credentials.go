@@ -15,15 +15,26 @@ type CredentialGetter interface {
 
 type ChainCredentialGetter []CredentialGetter
 
+// CredentialForHost returns the first credential of the chain that can actually
+// authenticate, and the reasons every other getter could not produce one.
+//
+// A getter answering with an empty password counts as no answer. It used to end
+// the chain, so a half-filled source shadowed the ones behind it and maiao sent
+// an unauthenticated request; forges answer that with 404 on a private
+// repository, an error that points nowhere near the credentials.
 func (c ChainCredentialGetter) CredentialForHost(host string) (*Credentials, error) {
 	errors := Errors{}
 	for _, getter := range c {
-		c, err := getter.CredentialForHost(host)
+		cred, err := getter.CredentialForHost(host)
 		if err != nil {
 			errors = append(errors, err)
-		} else {
-			return c, nil
+			continue
 		}
+		if cred == nil || cred.Password == "" {
+			errors = append(errors, fmt.Errorf("%T returned no password for %s", getter, host))
+			continue
+		}
+		return cred, nil
 	}
 	return nil, errors
 }

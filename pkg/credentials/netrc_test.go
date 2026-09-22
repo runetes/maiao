@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/adevinta/maiao/pkg/system"
 )
@@ -97,8 +98,13 @@ func TestNetrcCredentials(t *testing.T) {
 		system.EnsureTestFileContent(t, fs, "/netrc-test/.netrc", testNetrc)
 		n := &Netrc{Path: "/netrc-test/.netrc"}
 
-		t.Run("and the machine has only login, credentials is returned", func(t *testing.T) {
-			testCredentialSuccess(t, n, "login.example.com", Credentials{Username: "this-is-a-login"})
+		// A login on its own authenticates nothing: every forge maiao talks to
+		// wants a token in the password. Answering with it used to end the
+		// credential chain before the password manager was ever asked.
+		t.Run("and the machine has only login, an error is returned", func(t *testing.T) {
+			c, err := n.CredentialForHost("login.example.com")
+			assert.Error(t, err)
+			assert.Nil(t, c)
 		})
 		t.Run("and the machine has only password, credentials is returned", func(t *testing.T) {
 			testCredentialSuccess(t, n, "password.example.com", Credentials{Password: "pass"})
@@ -106,6 +112,25 @@ func TestNetrcCredentials(t *testing.T) {
 		t.Run("and the machine has login and password, credentials is returned", func(t *testing.T) {
 			testCredentialSuccess(t, n, "example.com", Credentials{Username: "me", Password: "a-secure-password"})
 		})
+	})
+
+	// The file below is what a user actually wrote, and what sent maiao at a
+	// Gitea instance with no credentials at all. It parses without error: the
+	// machine block is found, but `username:` and `password:` are not netrc keys,
+	// so both values are lost. The error has to name the file, because nothing
+	// else in the failure points at it.
+	t.Run("when the entry uses colon-separated keys, the error names the file", func(t *testing.T) {
+		fs := setupFS(t)
+		system.EnsureTestFileContent(t, fs, "/colon/.netrc",
+			"machine gitea.example.com\n  username: me\n  password: a-token\n")
+		n := &Netrc{Path: "/colon/.netrc"}
+
+		c, err := n.CredentialForHost("gitea.example.com")
+
+		require.Error(t, err)
+		assert.Nil(t, c)
+		assert.Contains(t, err.Error(), "/colon/.netrc")
+		assert.Contains(t, err.Error(), "password", "the message must name the key that is missing")
 	})
 
 	t.Run("when the path does not exist, an error is returned", func(t *testing.T) {
