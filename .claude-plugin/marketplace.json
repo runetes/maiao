@@ -1,0 +1,16 @@
+{
+    "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+    "name": "maiao",
+    "description": "Stacked pull requests with git review",
+    "owner": {
+        "name": "Maiao maintainers",
+        "url": "https://github.com/runetes/maiao"
+    },
+    "plugins": [
+        {
+            "name": "maiao",
+            "description": "Stacked pull requests with git review: shape commits so each one is its own reviewable pull request, and create, update, reorder or withdraw them",
+            "source": "./skills/maiao"
+        }
+    ]
+}
