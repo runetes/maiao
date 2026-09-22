@@ -2,8 +2,8 @@ class Maiao < Formula
   desc "Seamless GitHub PR management from the command-line"
   homepage "https://github.com/runetes/maiao"
   url "https://github.com/runetes/maiao.git",
-    tag:      "maiao-v1.5.0",
-    revision: "c89668c39c260d40a1696599d5d7d6b84277728b"
+    tag:      "maiao-v1.6.0",
+    revision: "a4832d1272dd9269bbadec5ad677bec4497c0bb4"
   license "MIT"
   conflicts_with "git-review"
   head "https://github.com/runetes/maiao.git",
