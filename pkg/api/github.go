@@ -186,7 +186,7 @@ func (g *GitHub) BodyFormatter() BodyFormatter {
 // LinkedTopicIssues returns the search URL for linked issues
 func (g *GitHub) LinkedTopicIssues(topicSearchString string) string {
 	values := url.Values{}
-	values.Add("q", fmt.Sprintf(`is:pr is:open "%s"`, topicSearchString))
+	values.Add("q", fmt.Sprintf(`is:pr is:open "%s" org:%s`, topicSearchString, g.RepoOwner()))
 	values.Add("type", "issues")
 	values.Encode()
 	return `https://` + g.Host + `/search?` + values.Encode()

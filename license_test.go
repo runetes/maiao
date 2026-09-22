@@ -1,7 +1,7 @@
 package maiao
 
 import (
-	"io/ioutil"
+	"os"
 	"strings"
 	"testing"
 
@@ -26,7 +26,7 @@ var (
 )
 
 func TestLicenses(t *testing.T) {
-	b, err := ioutil.ReadFile("go.mod")
+	b, err := os.ReadFile("go.mod")
 	require.NoError(t, err)
 	file, err := modfile.Parse("go.mod", b, nil)
 	require.NoError(t, err)
