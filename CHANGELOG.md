@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/runetes/maiao/compare/maiao-v1.5.0...maiao-v1.6.0) (2026-09-22)
+
+
+### Features
+
+* **fix topic search:** Fixing topic search ([#44](https://github.com/runetes/maiao/issues/44)) ([aca539b](https://github.com/runetes/maiao/commit/aca539b19690b03fa756c8dffd49926cb6551646))
+
 ## [1.5.0](https://github.com/runetes/maiao/compare/maiao-v1.4.1...maiao-v1.5.0) (2026-09-16)
 
 
