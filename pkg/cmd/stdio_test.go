@@ -59,5 +59,5 @@ func TestGuidanceGoesToStderr(t *testing.T) {
 	stdout, stderr := stdio()
 	assert.Empty(t, stdout, "nothing may be written to standard output")
 	assert.Contains(t, stderr, "missing change ids", "the guidance must still reach the user")
-	assert.Contains(t, stderr, lgit.HookPath(gitDir, lgit.CommitMsgHook))
+	assert.Contains(t, stderr, "git review install", "the guidance must tell the user how to fix it")
 }

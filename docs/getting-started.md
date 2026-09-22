@@ -84,6 +84,10 @@ git config --global maiao.provider gitlab
 
 Maiao tries credentials in this order: environment variable → `~/.netrc` → git credential helpers → system keychain.
 
+`~` here is `$HOME`, as it is for git and ssh. If you override `HOME` — a
+container, `sudo`, CI, an agent sandbox — put the file under the `HOME` the
+review runs with, not under the home of the account it runs as.
+
 #### GitHub / GitHub Enterprise
 
 ```bash

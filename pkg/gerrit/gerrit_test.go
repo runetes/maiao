@@ -1,8 +1,6 @@
 package gerrit
 
 import (
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/adevinta/maiao/pkg/git"
@@ -11,17 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
-
-const (
-	testHookScript = `#!/bin/bash
-echo you downloaded me`
-)
-
-func setHookURL(url string) {
-	commitMsgHookURL = url
-}
 
 func TestHookPath(t *testing.T) {
 	fs := afero.NewMemMapFs()
@@ -63,46 +51,20 @@ func TestIsInstalled(t *testing.T) {
 }
 
 func TestInstall(t *testing.T) {
-	// restore the original value at the end of the test
 	t.Cleanup(system.Reset)
-	defer setHookURL(commitMsgHookURL)
-	s := httptest.NewServer(http.HandlerFunc(replyTestHookScript))
-	defer s.Close()
 
-	t.Run("with an invalid hook url, the installation fails", func(t *testing.T) {
-		setHookURL("https://localhost:32")
+	t.Run("when the hooks directory does not exist", func(t *testing.T) {
 		fs := afero.NewMemMapFs()
 		system.DefaultFileSystem = fs
-
+		testHookInstalled(t, fs, "/src/some-repo/.git")
+	})
+	t.Run("when the hooks directory already exists", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		system.DefaultFileSystem = fs
 		system.EnsureTestFileContent(t, fs, git.HookPath("/src/some-repo/.git", git.CommitMsgHook), "#!/bin/bash\necho hello world")
-		require.NoError(t, fs.Chmod(git.HookPath("/src/some-repo/.git", git.CommitMsgHook), 0644))
 
-		assert.Error(t, Install("/src/some-repo/.git"))
-		system.AssertPathExists(t, fs, git.HookPath("/src/some-repo/.git", git.CommitMsgHook))
-		system.AssertFileContents(t, fs, git.HookPath("/src/some-repo/.git", git.CommitMsgHook), "#!/bin/bash\necho hello world")
-		system.AssertModePerm(t, fs, git.HookPath("/src/some-repo/.git", git.CommitMsgHook), "-rw-r--r--")
+		testHookInstalled(t, fs, "/src/some-repo/.git")
 	})
-	t.Run("with a valid hook URL, no error is returned", func(t *testing.T) {
-		setHookURL(s.URL + "/commit-msg-hook")
-		t.Run("when the hooks directory does not exist", func(t *testing.T) {
-			fs := afero.NewMemMapFs()
-			system.DefaultFileSystem = fs
-			testHookInstalled(t, fs, "/src/some-repo/.git")
-		})
-		t.Run("when the hooks directory already exists", func(t *testing.T) {
-			fs := afero.NewMemMapFs()
-			system.DefaultFileSystem = fs
-			system.EnsureTestFileContent(t, fs, git.HookPath("/src/some-repo/.git", git.CommitMsgHook), "#!/bin/bash\necho hello world")
-
-			testHookInstalled(t, fs, "/src/some-repo/.git")
-		})
-	})
-}
-
-func replyTestHookScript(w http.ResponseWriter, r *http.Request) {
-	r.Body.Close()
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(testHookScript))
 }
 
 func testHookInstalled(t *testing.T, fs afero.Fs, path string) {
@@ -110,7 +72,7 @@ func testHookInstalled(t *testing.T, fs afero.Fs, path string) {
 	t.Run("hook installation succeed", func(t *testing.T) {
 		assert.NoError(t, Install(path))
 		system.AssertPathExists(t, fs, git.HookPath(path, git.CommitMsgHook))
-		system.AssertFileContents(t, fs, git.HookPath(path, git.CommitMsgHook), testHookScript)
+		system.AssertFileContents(t, fs, git.HookPath(path, git.CommitMsgHook), string(commitMsgHook))
 		system.AssertModePerm(t, fs, git.HookPath(path, git.CommitMsgHook), "-rwxr-xr-x")
 	})
 }

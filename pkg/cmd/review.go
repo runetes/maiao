@@ -15,11 +15,9 @@ import (
 )
 
 const (
-	hookMissing = "commit message hook is missing, do you want to install it automatically?"
-	// noAutoInstallHookFmt takes the hooks directory, the resolved hook path and the
-	// hook download URL. The path is resolved through git.HookPath so the command
-	// works in worktrees, where .git is a file pointing at the common git dir.
-	noAutoInstallHookFmt = "You are missing change ids in your commits. \nPlease install the commit hook by running\n`mkdir -p %[1]s && curl -o %[2]s %[3]s && chmod +x %[2]s`"
+	hookMissing      = "commit message hook is missing, do you want to install it automatically?"
+	hookOutdated     = "commit message hook is outdated, do you want to update it?"
+	noAutoInstallFmt = "You are missing change ids in your commits.\nPlease install the commit hook by running `git review install`"
 )
 
 func review(cmd *cobra.Command, args []string) error {
@@ -95,6 +93,7 @@ func ensureCommitMsgHook(repoPath, gitDir string) (bool, error) {
 	hookPath := lgit.HookPath(gitDir, lgit.CommitMsgHook)
 	switch gerrit.StateAt(hookPath) {
 	case gerrit.MaiaoHook:
+		offerHookUpdate(hookPath)
 		return true, nil
 	case gerrit.ForeignHook:
 		// Not the same question as a missing hook, and not one the auto install
@@ -116,7 +115,7 @@ from now on, or `+"`git review install`"+` for this one only.
 Expected at %s`, prompt.ErrNoInput, hookPath)
 		}
 		if !confirm(hookMissing) {
-			fmt.Fprintf(os.Stderr, noAutoInstallHookFmt+"\n", filepath.Dir(hookPath), hookPath, gerrit.HookURL())
+			fmt.Fprintln(os.Stderr, noAutoInstallFmt)
 			return false, nil
 		}
 	}
@@ -124,6 +123,30 @@ Expected at %s`, prompt.ErrNoInput, hookPath)
 		return false, err
 	}
 	return true, nil
+}
+
+// offerHookUpdate silently checks whether the installed hook matches the
+// version embedded in this binary and offers to update it when it does not.
+//
+// A stale hook still works — it just misses fixes and improvements from
+// upstream. Declining is fine, so the review always proceeds.
+func offerHookUpdate(hookPath string) {
+	// In a chained setup the actual maiao hook lives beside the foreign one.
+	target := hookPath
+	chainedPath := filepath.Join(filepath.Dir(hookPath), gerrit.ChainedHookName)
+	if gerrit.CurrentAt(chainedPath) {
+		return
+	}
+	if !gerrit.CurrentAt(hookPath) {
+		// Decide which file to update: if the chained hook exists, that is ours.
+		if gerrit.StateAt(chainedPath) == gerrit.MaiaoHook {
+			target = chainedPath
+		}
+		if prompt.Batch() || !confirm(hookOutdated) {
+			return
+		}
+		_ = installHook(target)
+	}
 }
 
 func stackOption(repo *git.Repository) string {

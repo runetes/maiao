@@ -8,6 +8,25 @@ import (
 
 var CurrentUser = user.Current
 
+// HomeDir returns the directory a user's own files live in.
+//
+// HOME decides, which is what git, ssh and curl all do, and what makes a
+// container, a CI job or an agent sandbox that overrides it read the files it
+// meant to rather than the ones belonging to whoever the process happens to run
+// as. The passwd database is consulted only when HOME says nothing, where there
+// is nothing else to go on.
+func HomeDir() (string, error) {
+	// os.UserHomeDir reads HOME, and the platform's own equivalent elsewhere.
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return home, nil
+	}
+	usr, err := CurrentUser()
+	if err != nil {
+		return "", err
+	}
+	return usr.HomeDir, nil
+}
+
 var (
 	originalFS = DefaultFileSystem
 

@@ -65,6 +65,22 @@ func (s HookState) String() string {
 	return fmt.Sprintf("unknown (%d)", int(s))
 }
 
+// CurrentAt reports whether the hook content at path matches the embedded
+// version. It returns false when the file cannot be read or differs, which
+// means the hook is either missing or was installed by an older maiao (or an
+// older revision of the gerrit script).
+//
+// For a chained setup the caller should check the path where maiao's own hook
+// lives (the ChainedHookName beside the foreign hook), not the foreign hook
+// itself.
+func CurrentAt(path string) bool {
+	content, err := afero.ReadFile(system.DefaultFileSystem, path)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(content, commitMsgHook)
+}
+
 // StateAt reports what is installed at a hook path.
 //
 // The file is read rather than merely stated, because the question is not whether

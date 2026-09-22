@@ -7,6 +7,8 @@ import (
 
 	"github.com/jdxcode/netrc"
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/afero"
+
 	"github.com/adevinta/maiao/pkg/log"
 	"github.com/adevinta/maiao/pkg/system"
 )
@@ -26,16 +28,24 @@ func (n *Netrc) CredentialForHost(host string) (*Credentials, error) {
 	ctx := log.WithContextFields(context.Background(), logrus.Fields{"context": "parsing netrc", "host": host})
 	logger := log.ForContext(ctx)
 	if n.Path == "" {
-		usr, err := system.CurrentUser()
+		// From HOME, not from the passwd database: the two differ in a container,
+		// under sudo, in CI and in an agent sandbox, and the file the user wrote is
+		// the one under HOME.
+		home, err := system.HomeDir()
 		if err != nil {
-			logger.WithError(err).Infof("failed to retrieve current user")
+			logger.WithError(err).Infof("failed to retrieve the home directory")
 			return nil, err
 		}
-		n.Path = filepath.Join(usr.HomeDir, ".netrc")
+		n.Path = filepath.Join(home, ".netrc")
 		logger.Debugf("using default netrc path")
 	}
 	logger = logger.WithContext(log.WithContextFields(ctx, logrus.Fields{"path": n.Path}))
-	parsed, err := netrc.Parse(n.Path)
+	content, err := afero.ReadFile(system.DefaultFileSystem, n.Path)
+	if err != nil {
+		logger.WithError(err).Infof("failed to read netrc file")
+		return nil, err
+	}
+	parsed, err := netrc.ParseString(string(content))
 	if err != nil {
 		logger.WithError(err).Infof("failed to parse netrc file")
 		return nil, err
