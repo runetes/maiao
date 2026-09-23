@@ -116,11 +116,17 @@ never replaced. Maiao installs its own beside it and offers to add one line to
 the existing hook so that both run.
 
 With --skill, installs the git review skill that shipped with this binary, so an
-assistant is told the workflow this maiao actually implements. The directory to
-install into follows the flag, and defaults to the one assistants read personal
-skills from.`,
+assistant is told the workflow this maiao actually implements. A directory after
+the flag is used as given. Without one, the skill is installed for every coding
+harness detected on this machine ? Claude Code, Cursor, Codex, Copilot, Gemini,
+OpenCode and the others ? or for the harnesses named with --harness. In a
+repository, pass that directory after --harness: several harnesses share
+.agents/skills there, and the skill is written once.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("harness") && !cmd.Flags().Changed("skill") {
+				return fmt.Errorf("install: --harness names where the skill goes, and only applies together with --skill")
+			}
 			if cmd.Flags().Changed("skill") {
 				return installSkill(cmd, args)
 			}
@@ -130,11 +136,12 @@ skills from.`,
 			return install(cmd, args)
 		},
 	}
-	installCmd.Flags().String("skill", "", "Install the git review skill instead of the hook, into the directory that follows rather than the default")
-	// So that a bare --skill means the default directory rather than an empty one.
-	// It also stops pflag consuming the directory after it, which installSkill then
-	// takes from the positional arguments instead.
-	installCmd.Flags().Lookup("skill").NoOptDefVal = defaultSkillRoot()
+	installCmd.Flags().String("skill", "", "Install the git review skill instead of the hook, into the directory that follows rather than for every detected harness")
+	// So that a bare --skill means the detected harnesses rather than an empty
+	// directory. It also stops pflag consuming the directory after it, which
+	// installSkill then takes from the positional arguments instead.
+	installCmd.Flags().Lookup("skill").NoOptDefVal = skillDirAuto
+	installCmd.Flags().StringSlice("harness", nil, "Install the skill for these harnesses instead of every one detected (agents, claude, cline, codex, copilot, cursor, droid, gemini, goose, kilo, opencode, pi, windsurf, or all)")
 	installCmd.Flags().Bool("global", false, "Install the hook for every repository rather than only this one")
 	installCmd.Flags().Bool("force", false, "Replace a commit message hook installed by something else, rather than keeping it and running maiao's as well")
 	rootCmd.AddCommand(
