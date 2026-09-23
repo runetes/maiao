@@ -77,9 +77,13 @@ git config maiao.useNativeStack false  # disable entirely
 
 ## Coding agents
 
-Maiao ships a [Claude Code](https://claude.com/claude-code) skill teaching an agent
-the workflow: how to shape commits so each one is worth a pull request, and how to
-create, update, reorder and withdraw the changes in a stack.
+Maiao ships a skill teaching an agent the workflow: how to shape commits so each
+one is worth a pull request, and how to create, update, reorder and withdraw the
+changes in a stack. The same skill is read by Claude Code, Cursor, Codex,
+Copilot, Gemini, OpenCode and the other harnesses that follow the Agent Skills
+layout.
+
+[Claude Code](https://claude.com/claude-code) can install it as a plugin:
 
 ```bash
 /plugin marketplace add runetes/maiao
@@ -87,12 +91,23 @@ create, update, reorder and withdraw the changes in a stack.
 ```
 
 Or install the copy embedded in the binary, which is guaranteed to describe the
-maiao you are actually running and stamps the version it came from into `SKILL.md`:
+maiao you are actually running and stamps the version it came from into `SKILL.md`.
+With no harness named, that copy is written for every harness detected on this
+machine. Nothing detected yet falls back to `~/.agents/skills`, the directory
+Cursor, Codex, Copilot and OpenCode share:
 
 ```bash
-git review install --skill               # into ~/.claude/skills/git-review
-git review install --skill .claude       # into this project instead
+git review install --skill                    # every harness found under $HOME
+git review install --skill --harness cursor   # only Cursor (~/.cursor/skills)
+git review install --skill --harness cursor . # this project (.agents/skills)
+git review install --skill .claude            # an explicit directory
 ```
+
+In a repository, Cursor, Codex, Gemini, Copilot and OpenCode all read
+`.agents/skills`, so naming more than one of them installs the skill once.
+Claude Code reads `.claude/skills` instead. A harness that is not in the list
+still works: pass the directory it reads. `git review install --help` names
+the harnesses.
 
 Or, to pull it into a marketplace manifest you already keep, as a `git-subdir` source:
 
@@ -107,7 +122,8 @@ Or, to pull it into a marketplace manifest you already keep, as a `git-subdir` s
 }
 ```
 
-The skill is then invoked as `/maiao:git-review`. Pair it with
+From the Claude plugin the skill is invoked as `/maiao:git-review`; every other
+harness invokes it as `git-review`. Pair it with
 `git review install --global`, a token in the environment, and — on a self-hosted
 host — `git config --global maiao.provider`, so no run of `git review` ever stops
 to ask a question the agent cannot answer. See

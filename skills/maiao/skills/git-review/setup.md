@@ -46,6 +46,8 @@ offers to add one line so both run.
 ## Installing this skill elsewhere
 
 ```bash
-git review install --skill              # into ~/.claude/skills/git-review
-git review install --skill .claude      # into this project instead
+git review install --skill                    # every harness detected on this machine
+git review install --skill --harness cursor   # only that harness
+git review install --skill .agents            # this project, shared by most harnesses
+git review install --skill .claude            # this project, Claude Code
 ```

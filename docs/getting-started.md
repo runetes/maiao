@@ -372,8 +372,10 @@ To install the git review skill for a coding assistant, so it works the way this
 guide describes rather than from recall:
 
 ```bash
-git review install --skill               # into ~/.claude/skills/git-review
-git review install --skill .claude       # into this project instead
+git review install --skill                    # every harness detected on this machine
+git review install --skill --harness cursor   # only that harness
+git review install --skill .agents            # this project, shared by most harnesses
+git review install --skill .claude            # this project, Claude Code
 ```
 
 The skill is a directory: `SKILL.md` and the companion files its links name, all
