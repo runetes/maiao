@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/adevinta/maiao/pkg/log"
 	"github.com/google/go-github/v90/github"
+	"github.com/runetes/maiao/pkg/log"
 )
 
 const stackAPIVersion = "2026-03-10"

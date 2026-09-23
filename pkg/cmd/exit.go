@@ -3,11 +3,11 @@ package cmd
 import (
 	"errors"
 
-	"github.com/adevinta/maiao/pkg/credentials"
-	"github.com/adevinta/maiao/pkg/maiao"
-	"github.com/adevinta/maiao/pkg/prompt"
-	mssh "github.com/adevinta/maiao/pkg/ssh"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	"github.com/runetes/maiao/pkg/credentials"
+	"github.com/runetes/maiao/pkg/maiao"
+	"github.com/runetes/maiao/pkg/prompt"
+	mssh "github.com/runetes/maiao/pkg/ssh"
 )
 
 // The exit statuses maiao reports.

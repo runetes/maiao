@@ -8,9 +8,9 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/adevinta/maiao/pkg/git"
-	"github.com/adevinta/maiao/pkg/log"
-	"github.com/adevinta/maiao/pkg/system"
+	"github.com/runetes/maiao/pkg/git"
+	"github.com/runetes/maiao/pkg/log"
+	"github.com/runetes/maiao/pkg/system"
 	"github.com/sirupsen/logrus"
 )
 

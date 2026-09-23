@@ -3,7 +3,7 @@ package gh
 import (
 	"sync"
 
-	"github.com/adevinta/maiao/pkg/credentials"
+	"github.com/runetes/maiao/pkg/credentials"
 )
 
 // DefaultCredentialGetter implements retrieving credentials for github.com.

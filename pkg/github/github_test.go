@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/adevinta/maiao/pkg/credentials"
-	"github.com/adevinta/maiao/pkg/system"
+	"github.com/runetes/maiao/pkg/credentials"
+	"github.com/runetes/maiao/pkg/system"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

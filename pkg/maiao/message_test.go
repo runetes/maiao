@@ -3,8 +3,8 @@ package maiao
 import (
 	"testing"
 
-	"github.com/adevinta/maiao/pkg/api"
-	lgit "github.com/adevinta/maiao/pkg/git"
+	"github.com/runetes/maiao/pkg/api"
+	lgit "github.com/runetes/maiao/pkg/git"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -9,8 +9,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/afero"
 
-	"github.com/adevinta/maiao/pkg/log"
-	"github.com/adevinta/maiao/pkg/system"
+	"github.com/runetes/maiao/pkg/log"
+	"github.com/runetes/maiao/pkg/system"
 )
 
 // Netrc implements the CredentialGetter interface,

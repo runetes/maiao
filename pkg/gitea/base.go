@@ -9,8 +9,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/adevinta/maiao/pkg/api"
-	"github.com/adevinta/maiao/pkg/log"
+	"github.com/runetes/maiao/pkg/api"
+	"github.com/runetes/maiao/pkg/log"
 )
 
 type BaseClient struct {

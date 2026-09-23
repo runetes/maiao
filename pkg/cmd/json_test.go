@@ -7,8 +7,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/adevinta/maiao/pkg/maiao"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	"github.com/runetes/maiao/pkg/maiao"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

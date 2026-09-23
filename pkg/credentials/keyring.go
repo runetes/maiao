@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/99designs/keyring"
-	"github.com/adevinta/maiao/pkg/log"
 	"github.com/manifoldco/promptui"
+	"github.com/runetes/maiao/pkg/log"
 )
 
 // keyringServiceName names maiao in every backend: the macOS Keychain service,

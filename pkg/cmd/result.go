@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/adevinta/maiao/pkg/maiao"
+	"github.com/runetes/maiao/pkg/maiao"
 )
 
 // resultFileEnvVar names a file a nested maiao run writes its result to.

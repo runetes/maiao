@@ -8,11 +8,11 @@ import (
 	"strconv"
 	"strings"
 
-	gh "github.com/adevinta/maiao/pkg/github"
-	"github.com/adevinta/maiao/pkg/log"
 	"github.com/cli/go-gh/v2/pkg/api"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/google/go-github/v90/github"
+	gh "github.com/runetes/maiao/pkg/github"
+	"github.com/runetes/maiao/pkg/log"
 	"github.com/shurcooL/githubv4"
 	"github.com/sirupsen/logrus"
 )

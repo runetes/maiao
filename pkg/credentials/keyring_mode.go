@@ -4,7 +4,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/adevinta/maiao/pkg/log"
+	"github.com/runetes/maiao/pkg/log"
 )
 
 // GitConfigKeyringMode selects how maiao uses the OS password manager.

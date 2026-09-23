@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/adevinta/maiao/pkg/version"
-	skill "github.com/adevinta/maiao/skills/maiao"
+	"github.com/runetes/maiao/pkg/version"
+	skill "github.com/runetes/maiao/skills/maiao"
 	"github.com/spf13/cobra"
 )
 

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/adevinta/maiao/pkg/log"
+	"github.com/runetes/maiao/pkg/log"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

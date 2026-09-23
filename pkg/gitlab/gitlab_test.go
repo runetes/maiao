@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/adevinta/maiao/pkg/api"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	"github.com/runetes/maiao/pkg/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

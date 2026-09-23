@@ -10,17 +10,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/adevinta/maiao/pkg/api"
-	"github.com/adevinta/maiao/pkg/credentials"
-	lgit "github.com/adevinta/maiao/pkg/git"
-	"github.com/adevinta/maiao/pkg/log"
-	"github.com/adevinta/maiao/pkg/provider"
-	mssh "github.com/adevinta/maiao/pkg/ssh"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	"github.com/runetes/maiao/pkg/api"
+	"github.com/runetes/maiao/pkg/credentials"
+	lgit "github.com/runetes/maiao/pkg/git"
+	"github.com/runetes/maiao/pkg/log"
+	"github.com/runetes/maiao/pkg/provider"
+	mssh "github.com/runetes/maiao/pkg/ssh"
 	"github.com/sirupsen/logrus"
 )
 

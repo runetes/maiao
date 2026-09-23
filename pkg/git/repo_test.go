@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/adevinta/maiao/pkg/log"
-	"github.com/adevinta/maiao/pkg/system"
-	"github.com/adevinta/maiao/pkg/testutil"
+	"github.com/runetes/maiao/pkg/log"
+	"github.com/runetes/maiao/pkg/system"
+	"github.com/runetes/maiao/pkg/testutil"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"

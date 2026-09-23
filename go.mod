@@ -1,4 +1,4 @@
-module github.com/adevinta/maiao
+module github.com/runetes/maiao
 
 go 1.25.0
 

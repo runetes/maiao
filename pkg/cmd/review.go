@@ -8,10 +8,10 @@ import (
 
 	"github.com/go-git/go-git/v5"
 	"github.com/spf13/cobra"
-	"github.com/adevinta/maiao/pkg/gerrit"
-	lgit "github.com/adevinta/maiao/pkg/git"
-	"github.com/adevinta/maiao/pkg/maiao"
-	"github.com/adevinta/maiao/pkg/prompt"
+	"github.com/runetes/maiao/pkg/gerrit"
+	lgit "github.com/runetes/maiao/pkg/git"
+	"github.com/runetes/maiao/pkg/maiao"
+	"github.com/runetes/maiao/pkg/prompt"
 )
 
 const (

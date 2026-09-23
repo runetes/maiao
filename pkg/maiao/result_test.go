@@ -6,11 +6,11 @@ import (
 	"os"
 	"testing"
 
-	"github.com/adevinta/maiao/pkg/api"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/storage/memory"
+	"github.com/runetes/maiao/pkg/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

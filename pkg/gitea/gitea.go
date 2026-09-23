@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/adevinta/maiao/pkg/credentials"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	"github.com/runetes/maiao/pkg/credentials"
 )
 
 type Gitea struct {

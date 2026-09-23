@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/adevinta/maiao/pkg/system"
+	"github.com/runetes/maiao/pkg/system"
 	"github.com/spf13/afero"
 )
 

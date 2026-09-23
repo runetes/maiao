@@ -5,10 +5,10 @@ import (
 	"errors"
 	"testing"
 
-	lgit "github.com/adevinta/maiao/pkg/git"
-	"github.com/adevinta/maiao/pkg/testutil"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	lgit "github.com/runetes/maiao/pkg/git"
+	"github.com/runetes/maiao/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
