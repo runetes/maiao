@@ -1,4 +1,5 @@
 Copyright (c) 2021 Adevinta
+Copyright (c) 2026 runetes contributors
 
 Unless required by applicable law or agreed to in writing, software distributed
 under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS
