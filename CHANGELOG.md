@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.8.0](https://github.com/runetes/maiao/compare/maiao-v1.7.0...maiao-v1.8.0) (2026-09-23)
+
+
+### Features
+
+* install the git review skill for every detected harness ([da036c3](https://github.com/runetes/maiao/commit/da036c37bda4158f295e24d3aa64cc2bc919cbf2))
+* select the password manager with git config maiao.keyring ([d4bc2dd](https://github.com/runetes/maiao/commit/d4bc2dd4303a1599fdbda8543afca3c8608d32c7))
+* ship and install the git review skill ([0c5f614](https://github.com/runetes/maiao/commit/0c5f61493156cb7d8002e4e3084e40b7865f736e))
+
+
+### Bug Fixes
+
+* authenticate over SSH from ~/.ssh/config, as ssh does ([f0f3191](https://github.com/runetes/maiao/commit/f0f31915e6ef70a77273b77cd7c7307fa6c19543))
+* build macOS binaries with cgo so the Keychain exists ([1c8be6b](https://github.com/runetes/maiao/commit/1c8be6b0321a3ceff40a8a83c36f801e89814827))
+* restore keyring backend settings and stop silent fallback ([c313696](https://github.com/runetes/maiao/commit/c313696611598fc236255430a4117627256f5091))
+* send a named Gitea credential as basic auth ([db4ee5f](https://github.com/runetes/maiao/commit/db4ee5fcc942ee37217dbde2417fa7592d9f90b7))
+
 ## [1.7.0](https://github.com/runetes/maiao/compare/maiao-v1.6.0...maiao-v1.7.0) (2026-09-22)
 
 
