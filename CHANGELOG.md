@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.7.0](https://github.com/runetes/maiao/compare/maiao-v1.6.0...maiao-v1.7.0) (2026-09-22)
+
+
+### Features
+
+* embed the Gerrit commit-msg hook instead of downloading it ([bcd4a76](https://github.com/runetes/maiao/commit/bcd4a76083ad71a15271aa484e78c98923cdd54e))
+* offer to update an outdated commit-msg hook ([3981cec](https://github.com/runetes/maiao/commit/3981cecf7e4825c280e3f609a0accef8adcaff39))
+
+
+### Bug Fixes
+
+* resolve the netrc path from HOME ([af9a3f8](https://github.com/runetes/maiao/commit/af9a3f8fc8a4419f584bbda589cd554456e683ff))
+
 ## [1.6.0](https://github.com/runetes/maiao/compare/maiao-v1.5.0...maiao-v1.6.0) (2026-09-22)
 
 
