@@ -3,10 +3,10 @@ package cmd
 import (
 	"testing"
 
-	lgit "github.com/adevinta/maiao/pkg/git"
-	"github.com/adevinta/maiao/pkg/prompt"
-	mssh "github.com/adevinta/maiao/pkg/ssh"
-	"github.com/adevinta/maiao/pkg/testutil"
+	lgit "github.com/runetes/maiao/pkg/git"
+	"github.com/runetes/maiao/pkg/prompt"
+	mssh "github.com/runetes/maiao/pkg/ssh"
+	"github.com/runetes/maiao/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

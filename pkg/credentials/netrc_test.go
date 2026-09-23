@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/adevinta/maiao/pkg/system"
+	"github.com/runetes/maiao/pkg/system"
 )
 
 const testNetrc = `machine login.example.com

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/adevinta/maiao/pkg/system"
+	"github.com/runetes/maiao/pkg/system"
 )
 
 func rebaseEditor(cmd *cobra.Command, args []string) error {

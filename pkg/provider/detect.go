@@ -5,8 +5,8 @@ import (
 	"os/exec"
 	"strings"
 
-	lgit "github.com/adevinta/maiao/pkg/git"
-	"github.com/adevinta/maiao/pkg/prompt"
+	lgit "github.com/runetes/maiao/pkg/git"
+	"github.com/runetes/maiao/pkg/prompt"
 	"github.com/sirupsen/logrus"
 )
 

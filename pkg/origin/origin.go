@@ -9,10 +9,10 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/adevinta/maiao/pkg/api"
-	"github.com/adevinta/maiao/pkg/credentials"
-	"github.com/adevinta/maiao/pkg/log"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	"github.com/runetes/maiao/pkg/api"
+	"github.com/runetes/maiao/pkg/credentials"
+	"github.com/runetes/maiao/pkg/log"
 )
 
 type Origin struct {

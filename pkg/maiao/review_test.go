@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/adevinta/maiao/pkg/api"
-	"github.com/adevinta/maiao/pkg/log"
-	"github.com/adevinta/maiao/pkg/system"
+	"github.com/runetes/maiao/pkg/api"
+	"github.com/runetes/maiao/pkg/log"
+	"github.com/runetes/maiao/pkg/system"
 	"github.com/spf13/afero"
 
 	"github.com/go-git/go-git/v5"

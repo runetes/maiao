@@ -14,7 +14,7 @@ class Maiao < Formula
   def install
     ldflags = %W[
       -s -w
-      -X github.com/adevinta/maiao/pkg/version.Version=#{version}+homebrew-runetes-maiao
+      -X github.com/runetes/maiao/pkg/version.Version=#{version}+homebrew-runetes-maiao
     ]
 
     # The macOS Keychain backend of 99designs/keyring is behind a

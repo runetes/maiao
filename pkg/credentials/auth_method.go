@@ -4,9 +4,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/adevinta/maiao/pkg/log"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
+	"github.com/runetes/maiao/pkg/log"
 	"golang.org/x/crypto/ssh"
 )
 

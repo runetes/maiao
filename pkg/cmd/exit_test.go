@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/adevinta/maiao/pkg/credentials"
-	lgit "github.com/adevinta/maiao/pkg/git"
-	"github.com/adevinta/maiao/pkg/maiao"
-	mssh "github.com/adevinta/maiao/pkg/ssh"
-	"github.com/adevinta/maiao/pkg/testutil"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	"github.com/runetes/maiao/pkg/credentials"
+	lgit "github.com/runetes/maiao/pkg/git"
+	"github.com/runetes/maiao/pkg/maiao"
+	mssh "github.com/runetes/maiao/pkg/ssh"
+	"github.com/runetes/maiao/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/adevinta/maiao/pkg/log"
+	"github.com/runetes/maiao/pkg/log"
 )
 
 const fixupPrefix = "fixup! "

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/adevinta/maiao/pkg/api"
-	lgit "github.com/adevinta/maiao/pkg/git"
+	"github.com/runetes/maiao/pkg/api"
+	lgit "github.com/runetes/maiao/pkg/git"
 )
 
 func topicDetails(f api.BodyFormatter, prAPI api.PullRequester, topic string) []string {

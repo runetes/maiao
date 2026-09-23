@@ -7,11 +7,11 @@ import (
 	"os"
 
 	"github.com/99designs/keyring"
-	"github.com/adevinta/maiao/pkg/git"
-	"github.com/adevinta/maiao/pkg/log"
-	"github.com/adevinta/maiao/pkg/prompt"
-	mssh "github.com/adevinta/maiao/pkg/ssh"
-	"github.com/adevinta/maiao/pkg/version"
+	"github.com/runetes/maiao/pkg/git"
+	"github.com/runetes/maiao/pkg/log"
+	"github.com/runetes/maiao/pkg/prompt"
+	mssh "github.com/runetes/maiao/pkg/ssh"
+	"github.com/runetes/maiao/pkg/version"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"

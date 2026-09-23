@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
-	"github.com/adevinta/maiao/pkg/log"
+	"github.com/runetes/maiao/pkg/log"
 )
 
 // API is the package handling all API interactions

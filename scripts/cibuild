@@ -61,7 +61,7 @@ function build(){
     fi
 
     env "${build_env[@]}" go build -o "${output}" \
-        -ldflags "-X github.com/adevinta/maiao/pkg/version.Version=$(git describe --always --tags --dirty)" \
+        -ldflags "-X github.com/runetes/maiao/pkg/version.Version=$(git describe --always --tags --dirty)" \
         ./cmd/maiao
 }
 

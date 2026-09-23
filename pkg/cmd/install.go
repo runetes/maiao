@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/adevinta/maiao/pkg/gerrit"
-	lgit "github.com/adevinta/maiao/pkg/git"
-	"github.com/adevinta/maiao/pkg/prompt"
+	"github.com/runetes/maiao/pkg/gerrit"
+	lgit "github.com/runetes/maiao/pkg/git"
+	"github.com/runetes/maiao/pkg/prompt"
 	"github.com/spf13/cobra"
 )
 

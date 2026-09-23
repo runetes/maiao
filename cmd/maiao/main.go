@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/adevinta/maiao/pkg/cmd"
+	"github.com/runetes/maiao/pkg/cmd"
 )
 
 func main() {

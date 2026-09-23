@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/adevinta/maiao/pkg/prompt"
-	"github.com/adevinta/maiao/pkg/system"
+	"github.com/runetes/maiao/pkg/prompt"
+	"github.com/runetes/maiao/pkg/system"
 )
 
 func IsKnownHostsError(err error) (host string, isMismatch bool, ok bool) {

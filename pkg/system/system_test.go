@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/adevinta/maiao/pkg/system"
+	"github.com/runetes/maiao/pkg/system"
 )
 
 func TestGetEnvOrDefault(t *testing.T) {

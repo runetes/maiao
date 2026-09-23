@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/adevinta/maiao/pkg/log"
 	"github.com/cli/go-gh/v2/pkg/api"
 	"github.com/google/go-github/v90/github"
+	"github.com/runetes/maiao/pkg/log"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
 )
