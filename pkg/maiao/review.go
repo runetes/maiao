@@ -243,12 +243,10 @@ func sendPrs(ctx context.Context, repo lgit.Repository, options ReviewOptions, b
 		return nil, err
 	}
 
-	refspecs := []config.RefSpec{}
 	for _, change := range changes {
 		if len(change.commits) == 0 {
 			return nil, errors.New("empty change")
 		}
-		refspecs = append(refspecs, config.RefSpec(change.head.Hash.String()+":refs/heads/"+change.branch))
 	}
 
 	if len(remote.Config().URLs) != 1 {
@@ -266,25 +264,39 @@ func sendPrs(ctx context.Context, repo lgit.Repository, options ReviewOptions, b
 	}
 	credGetter := credentials.CredentialGetterForProvider(string(providerType))
 
-	log.ForContext(ctx).WithField("refspec", refspecs).Debugf("pushing PR changes")
-	pushOpts := &git.PushOptions{
-		RemoteName: options.Remote,
-		RefSpecs:   refspecs,
-		Auth:       &credentials.GitAuth{Credentials: credGetter, Endpoint: endpoint},
-		Force:      true,
-	}
-	err = retryAfterHostKeyFix(endpoint.Host, func() error { return repo.Push(pushOpts) })
-	if err != nil && err != git.NoErrAlreadyUpToDate {
-		return nil, err
-	}
-
 	prAPI, err := pullRequesterFor(ctx, remote, options.RepoPath)
 	if err != nil {
 		return nil, err
 	}
 
+	// The stack is walked from its base upwards, pushing one branch and immediately
+	// settling the pull request on it, rather than force-pushing every branch first.
+	//
+	// GitHub marks a pull request merged as soon as its head commits are contained in
+	// its base branch. Reordering commits locally makes the branch a pull request
+	// still names as its base grow to contain that pull request's own head, so
+	// pushing every branch before re-pointing any of them closes reviews that were
+	// never merged. The next run then opens duplicates, because an existing pull
+	// request is looked up among the open ones only. Pushing a branch once every
+	// pull request below it already names its new base leaves no such window: what
+	// is pushed next is always above them in the stack.
 	var parent *change
 	for i, change := range changes {
+		refspec := config.RefSpec(change.head.Hash.String() + ":refs/heads/" + change.branch)
+		log.ForContext(ctx).WithField("refspec", refspec).Debugf("pushing PR changes")
+		pushOpts := &git.PushOptions{
+			RemoteName: options.Remote,
+			RefSpecs:   []config.RefSpec{refspec},
+			Auth:       &credentials.GitAuth{Credentials: credGetter, Endpoint: endpoint},
+			Force:      true,
+		}
+		err = retryAfterHostKeyFix(endpoint.Host, func() error { return repo.Push(pushOpts) })
+		if err != nil && err != git.NoErrAlreadyUpToDate {
+			// The changes below this one are already pushed and reviewed, so the run has
+			// done work a caller deciding whether to retry needs to know about.
+			return newResult(changes), err
+		}
+
 		change.parent = parent
 		opts := prOptions(repo, prAPI, options, change, changes[:i], changes[i+1:])
 		pr, created, err := prAPI.Ensure(ctx, opts)
@@ -300,6 +312,18 @@ func sendPrs(ctx context.Context, repo lgit.Repository, options ReviewOptions, b
 		change.pr = pr
 		change.created = created
 		parent = change
+
+		if !created {
+			// Ensure leaves an existing pull request's base where it was, and the branch
+			// it points at may be the next one pushed. Ready is dropped: the pass below
+			// marks the review ready, and asking twice asks GitHub to take a pull request
+			// out of draft that is already out of it.
+			baseOpts := opts
+			baseOpts.Ready = false
+			if _, err := prAPI.Update(ctx, pr, baseOpts); err != nil {
+				return newResult(changes), err
+			}
+		}
 	}
 	for i, change := range changes {
 		opts := prOptions(repo, prAPI, options, change, changes[:i], changes[i+1:])
