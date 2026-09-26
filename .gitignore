@@ -16,3 +16,4 @@ coverage.xml
 junit
 version.txt
 .DS_Store
+test
