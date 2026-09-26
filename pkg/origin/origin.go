@@ -3,10 +3,12 @@ package origin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -29,13 +31,36 @@ type pullRequestRef struct {
 }
 
 type pullRequest struct {
-	Number string         `json:"number"`
-	Title  string         `json:"title"`
-	Body   string         `json:"body"`
+	Number string `json:"number"`
+	Title  string `json:"title"`
+	Body   string `json:"body"`
+	// State is only ever "open" or "closed" — Origin reports a merge through the
+	// separate Merged flag below, not a third state value: '"open" or "closed". A draft
+	// is "open"; merged and closed pull requests are both "closed".'
+	// https://cursor.com/docs/api/origin/openapi.yaml, the PullRequest schema
 	State  string         `json:"state"`
 	Draft  bool           `json:"draft"`
+	Merged bool           `json:"merged"`
 	Head   pullRequestRef `json:"head"`
 	Base   pullRequestRef `json:"base"`
+}
+
+// originState maps what Origin reports onto the states a review can act on.
+// https://cursor.com/docs/api/origin/openapi.yaml, the PullRequest schema
+//
+// A state Origin does not report, or one this does not recognise, is taken to be open:
+// pkg/api.PullRequest documents an unsaid state as the one every caller treats as open,
+// and the costs are asymmetric — reading an open pull request as closed parks or
+// replaces a live review, while reading a dead one as open at worst reuses something
+// the forge then refuses to move.
+func originState(pr pullRequest) api.PullRequestState {
+	if pr.Merged {
+		return api.PullRequestMerged
+	}
+	if pr.State == "closed" {
+		return api.PullRequestClosed
+	}
+	return api.PullRequestOpen
 }
 
 type listPullRequestsResponse struct {
@@ -88,30 +113,161 @@ func (t *bearerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return t.delegate.RoundTrip(req)
 }
 
+// Find looks up the pull request for head, whatever state Origin reports it in. It
+// owns the list-and-pick switch so Ensure cannot drift from what a plain lookup
+// reports.
+//
+// Listing state=all rather than the open-only default is what lets a review reuse a
+// pull request an earlier run left closed instead of opening a second one beside it.
+// https://cursor.com/docs/api/origin
+func (o *Origin) Find(ctx context.Context, head string) (*api.PullRequest, error) {
+	prs, err := o.listPRs(ctx, head)
+	if err != nil {
+		return nil, err
+	}
+	if len(prs) == 0 {
+		return nil, nil
+	}
+	picked := pick(prs)
+	return &api.PullRequest{
+		ID:    picked.Number,
+		URL:   o.prURL(picked.Number),
+		Base:  picked.Base.Ref,
+		State: originState(picked),
+	}, nil
+}
+
+// pick chooses which of several pull requests on one head branch is the change's.
+//
+// state=all can return more than one where the open-only default returned at most one;
+// the extras are the wreckage of an earlier run rather than an ambiguity to refuse.
+//
+// An open one wins over any closed or merged one, however much newer that one is,
+// because it is the live review. Taking the highest number instead reported a head
+// whose open pull request carried the conversation as Merged, which makes the parking
+// pass skip it, so the push leaves its stale base containing its head and the forge
+// closes it as merged — irreversibly. Among equals the highest number wins, numbers
+// only growing; Origin does list most recently created first by default, but the answer
+// does not depend on that.
+// https://cursor.com/docs/api/origin/openapi.yaml, OriginService_ListPullRequests
+func pick(prs []pullRequest) pullRequest {
+	picked := prs[0]
+	pickedOpen := originState(picked) == api.PullRequestOpen
+	for _, pr := range prs[1:] {
+		open := originState(pr) == api.PullRequestOpen
+		if (open && !pickedOpen) || (open == pickedOpen && numericallyAfter(pr.Number, picked.Number)) {
+			picked, pickedOpen = pr, open
+		}
+	}
+	return picked
+}
+
 func (o *Origin) Ensure(ctx context.Context, options api.PullRequestOptions) (*api.PullRequest, bool, error) {
-	prs, err := o.listPRs(ctx, options.Head)
+	pr, err := o.Find(ctx, options.Head)
 	if err != nil {
 		return nil, false, err
 	}
-
-	switch len(prs) {
-	case 0:
-		pr, err := o.createPR(ctx, options)
-		if err != nil {
+	switch {
+	case pr == nil, pr.State == api.PullRequestMerged:
+		// A merged pull request cannot be brought back: the state field of the update
+		// endpoint takes `"open"` or `"closed"` and says "Merged is not writable — use
+		// MergePullRequest" (https://cursor.com/docs/api/origin/openapi.yaml,
+		// OriginService_UpdatePullRequest). So this change needs a new one, as it does on
+		// GitHub (422) and Gitea (412).
+	case pr.State == api.PullRequestClosed:
+		reopened, err := o.reopen(ctx, pr, options)
+		switch {
+		case err == nil:
+			return reopened, false, nil
+		case errors.Is(err, api.ErrPullRequestNotReopenable):
+			// Falling through to create, rather than ending the run as a hard error did:
+			// that left the change with its branch already pushed and no pull request.
+			api.ReportAbandonedConversation(pr)
+		default:
 			return nil, false, err
 		}
-		return &api.PullRequest{
-			ID:  pr.Number,
-			URL: o.prURL(pr.Number),
-		}, true, nil
-	case 1:
-		return &api.PullRequest{
-			ID:  prs[0].Number,
-			URL: o.prURL(prs[0].Number),
-		}, false, nil
 	default:
-		return nil, false, fmt.Errorf("too many matching pull requests (%d)", len(prs))
+		return pr, false, nil
 	}
+
+	created, err := o.createPR(ctx, options)
+	if err != nil {
+		return nil, false, err
+	}
+	return &api.PullRequest{
+		ID:   created.Number,
+		URL:  o.prURL(created.Number),
+		Base: created.Base.Ref,
+	}, true, nil
+}
+
+// reopen brings a closed pull request back, so the change keeps the pull request it
+// already had and the conversation on it.
+//
+// State and base travel in the same request, in which Origin applies them in the order
+// this needs: "Present fields are applied in order: metadata, then
+// reopen/draft/ready-for-review, then base, then stack parent, then close... reopen runs
+// before base so a closed pull can be retargeted."
+// https://cursor.com/docs/api/origin/openapi.yaml, OriginService_UpdatePullRequest
+//
+// The same paragraph names the residual: "If a later step fails, earlier steps may
+// already have been committed." A refusal of the base half therefore leaves the pull
+// request reopened on its old base, beside the new one the caller then creates.
+// Untested against a live Origin repository, which this has never run against.
+func (o *Origin) reopen(ctx context.Context, pr *api.PullRequest, options api.PullRequestOptions) (*api.PullRequest, error) {
+	body := map[string]interface{}{"state": "open"}
+	// Only when it has actually moved, which is what keeps the unverified ordering
+	// above off the common path: a review closed by hand is already on the right base,
+	// so the request asks for nothing but the reopen and no order can be got wrong.
+	if pr.Base != options.Base {
+		body["base"] = options.Base
+	}
+
+	reqURL := fmt.Sprintf("%s/repos/%s/%s/pulls/%s", o.apiBase, o.Owner, o.Repo, pr.ID)
+	resp, err := o.doJSON(ctx, http.MethodPatch, reqURL, body)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// A refusal is answered with ErrPullRequestNotReopenable rather than a hard error:
+	// that is pkg/api's contract for a closed pull request which cannot be brought back,
+	// and the caller then opens a new one instead of ending the review with the change's
+	// branch pushed and nothing on it. A retry would fail the same way — the reasons a
+	// forge refuses (a recorded merge, a base branch since deleted, a protection rule)
+	// are not ones maiao can fix from here.
+	if resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("%w: %s: %s %s", api.ErrPullRequestNotReopenable, pr.URL, resp.Status, string(respBody))
+	}
+
+	var result pullRequest
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	return &api.PullRequest{
+		ID:    result.Number,
+		URL:   o.prURL(result.Number),
+		Base:  result.Base.Ref,
+		State: originState(result),
+	}, nil
+}
+
+// numericallyAfter reports whether a is a later pull request number than b. Origin's
+// pull request numbers are decimal strings, so a lexical comparison would rank "9"
+// after "10"; both parse as plain integers, and a malformed one sorts before
+// everything rather than panicking.
+func numericallyAfter(a, b string) bool {
+	an, aErr := strconv.Atoi(a)
+	bn, bErr := strconv.Atoi(b)
+	if aErr != nil {
+		return false
+	}
+	if bErr != nil {
+		return true
+	}
+	return an > bn
 }
 
 func (o *Origin) Update(ctx context.Context, pr *api.PullRequest, options api.PullRequestOptions) (*api.PullRequest, error) {
@@ -144,8 +300,9 @@ func (o *Origin) Update(ctx context.Context, pr *api.PullRequest, options api.Pu
 	}
 
 	return &api.PullRequest{
-		ID:  result.Number,
-		URL: o.prURL(result.Number),
+		ID:   result.Number,
+		URL:  o.prURL(result.Number),
+		Base: result.Base.Ref,
 	}, nil
 }
 
@@ -187,10 +344,22 @@ func (o *Origin) BodyFormatter() api.BodyFormatter {
 	return api.HTMLBodyFormatter{}
 }
 
+// listPRs needs no page walk, unlike the Gitea client: head is a filter Origin applies
+// itself — "Optional exact branch (head-ref) filter" — so widening state from its
+// open-only default to all widens the result from the open pull requests on this one
+// branch to every pull request on it, well inside the 30 rows a page carries by default,
+// rather than to the repository's whole history. Which is why nextPageToken in the
+// envelope above is decoded and not followed.
+// https://cursor.com/docs/api/origin/openapi.yaml, OriginService_ListPullRequests
 func (o *Origin) listPRs(ctx context.Context, head string) ([]pullRequest, error) {
 	params := url.Values{}
 	params.Add("head", head)
-	params.Add("state", "open")
+	// state=all, because a review that cannot see a closed pull request opens a second
+	// one for the same change and leaves the conversation on the first. The filter takes
+	// '"open" (the default), "closed", "merged", or "all"... Any other value is rejected
+	// with INVALID_ARGUMENT', so a misspelling here would fail loudly rather than
+	// quietly list the open ones.
+	params.Add("state", "all")
 	reqURL := fmt.Sprintf("%s/repos/%s/%s/pulls?%s", o.apiBase, o.Owner, o.Repo, params.Encode())
 
 	resp, err := o.doRequest(ctx, http.MethodGet, reqURL)

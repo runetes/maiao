@@ -46,6 +46,33 @@ func TestEnsureReturnsExistingPR(t *testing.T) {
 	assert.Equal(t, "https://origin.cursor.com/owner/repo/pull/42", pr.URL)
 }
 
+func TestFindReturnsNilWhenNoPRExists(t *testing.T) {
+	o := newTestOrigin(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"pullRequests": []}`))}, nil
+	}))
+
+	pr, err := o.Find(context.Background(), "maiao.abc123")
+	require.NoError(t, err)
+	assert.Nil(t, pr)
+}
+
+func TestFindReturnsExistingPR(t *testing.T) {
+	o := newTestOrigin(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "maiao.abc123", r.URL.Query().Get("head"), "Origin filters the head itself, which is what bounds a state=all listing")
+		assert.Equal(t, "all", r.URL.Query().Get("state"))
+		body := `{"pullRequests": [{"number": "42", "state": "open", "head": {"ref": "maiao.abc123", "sha": "abc123"}, "base": {"ref": "main", "sha": "def"}}]}`
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+	}))
+
+	pr, err := o.Find(context.Background(), "maiao.abc123")
+	require.NoError(t, err)
+	require.NotNil(t, pr)
+	assert.Equal(t, "42", pr.ID)
+	assert.Equal(t, "https://origin.cursor.com/owner/repo/pull/42", pr.URL)
+	assert.Equal(t, "main", pr.Base)
+}
+
 func TestEnsureCreatesNewPR(t *testing.T) {
 	o := newTestOrigin(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
 		switch r.Method {
@@ -135,16 +162,214 @@ func TestEnsureCreatesNewPRWithDraft(t *testing.T) {
 	assert.Equal(t, "101", pr.ID)
 }
 
-func TestEnsureReturnsErrorWhenTooManyPRs(t *testing.T) {
+// TestFindPicksNewestWhenNoneIsOpen covers the wreckage a run that closed a pull
+// request and then opened a second one for the same change leaves behind: state=all can
+// return more than one match for a head branch, and Find must pick one rather than
+// refuse.
+//
+// Both rows are on the head that was asked for and carry the states Origin really sends.
+// Rows on other heads proved nothing: Origin filters the head itself, so a listing for
+// maiao.abc123 never contains them, and the state Find reported went unchecked.
+func TestFindPicksNewestWhenNoneIsOpen(t *testing.T) {
 	o := newTestOrigin(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
-		body := `{"pullRequests": [{"number": "1", "head": {"ref": "a", "sha": "x"}}, {"number": "2", "head": {"ref": "b", "sha": "y"}}]}`
+		body := `{"pullRequests": [
+			{"number": "1", "state": "closed", "merged": false, "head": {"ref": "maiao.abc123", "sha": "x"}, "base": {"ref": "main", "sha": "b1"}},
+			{"number": "2", "state": "closed", "merged": true, "head": {"ref": "maiao.abc123", "sha": "y"}, "base": {"ref": "main", "sha": "b2"}}
+		]}`
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
 	}))
 
-	pr, _, err := o.Ensure(context.Background(), api.PullRequestOptions{Head: "maiao.abc123"})
-	assert.Nil(t, pr)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "too many matching pull requests")
+	pr, err := o.Find(context.Background(), "maiao.abc123")
+	require.NoError(t, err)
+	require.NotNil(t, pr)
+	assert.Equal(t, "2", pr.ID)
+	assert.Equal(t, api.PullRequestMerged, pr.State)
+}
+
+// TestFindPrefersTheOpenPullRequestOverANewerMergedOne is the loss picking the highest
+// number caused: a head carrying an open pull request with the review conversation on
+// it, plus a newer one an earlier run left merged on the same head. Reported as Merged,
+// the change is skipped by the parking pass, its stale base ends up containing its head
+// once the branches are pushed, and the forge closes the open pull request as merged
+// with no way back.
+func TestFindPrefersTheOpenPullRequestOverANewerMergedOne(t *testing.T) {
+	o := newTestOrigin(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		body := `{"pullRequests": [
+			{"number": "10", "state": "open", "merged": false, "head": {"ref": "maiao.abc123", "sha": "x"}, "base": {"ref": "main", "sha": "b1"}},
+			{"number": "14", "state": "closed", "merged": true, "head": {"ref": "maiao.abc123", "sha": "y"}, "base": {"ref": "main", "sha": "b2"}}
+		]}`
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+	}))
+
+	pr, err := o.Find(context.Background(), "maiao.abc123")
+	require.NoError(t, err)
+	require.NotNil(t, pr)
+	assert.Equal(t, "10", pr.ID)
+	assert.Equal(t, api.PullRequestOpen, pr.State)
+}
+
+// TestFindReadsAStateItDoesNotRecogniseAsOpen: pkg/api documents a state a provider
+// does not say as the one every caller treats as open. Defaulting the other way meant
+// one unrecognised state string sent a live review to be parked or replaced.
+func TestFindReadsAStateItDoesNotRecogniseAsOpen(t *testing.T) {
+	o := newTestOrigin(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		body := `{"pullRequests": [{"number": "42", "state": "a-state-origin-grew-later", "head": {"ref": "maiao.abc123", "sha": "x"}, "base": {"ref": "main", "sha": "b"}}]}`
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+	}))
+
+	pr, err := o.Find(context.Background(), "maiao.abc123")
+	require.NoError(t, err)
+	require.NotNil(t, pr)
+	assert.Equal(t, api.PullRequestOpen, pr.State)
+}
+
+// TestEnsureOpensANewPullRequestWhenTheReopenIsRefused pins the fallback. A hard error
+// here ended the run after the branches had been pushed: the pull request stayed closed,
+// nothing replaced it, and the change was left with a branch on the forge and no review.
+// pkg/api.ErrPullRequestNotReopenable is the contract for that refusal.
+func TestEnsureOpensANewPullRequestWhenTheReopenIsRefused(t *testing.T) {
+	o := newTestOrigin(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		switch r.Method {
+		case http.MethodGet:
+			body := `{"pullRequests": [{"number": "42", "state": "closed", "merged": false, "head": {"ref": "maiao.abc123", "sha": "x"}, "base": {"ref": "deleted-base", "sha": "y"}}]}`
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+		case http.MethodPatch:
+			body := `{"code": 9, "message": "base branch deleted-base does not exist"}`
+			return &http.Response{StatusCode: http.StatusBadRequest, Body: io.NopCloser(strings.NewReader(body))}, nil
+		case http.MethodPost:
+			body := `{"number": "99", "head": {"ref": "maiao.abc123", "sha": "x"}, "base": {"ref": "new-base", "sha": "z"}}`
+			return &http.Response{StatusCode: http.StatusCreated, Body: io.NopCloser(strings.NewReader(body))}, nil
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+			return nil, nil
+		}
+	}))
+
+	pr, created, err := o.Ensure(context.Background(), api.PullRequestOptions{
+		Head: "maiao.abc123",
+		Base: "new-base",
+	})
+
+	require.NoError(t, err, "a refused reopen must not end the review")
+	assert.True(t, created)
+	require.NotNil(t, pr)
+	assert.Equal(t, "99", pr.ID)
+}
+
+// TestEnsureReopensClosedPR pins the fix: a pull request Origin closed (but did not
+// merge) is reopened and reused rather than left behind for a second pull request to
+// open beside it.
+// TestEnsureReopensWithoutSendingABaseThatIsAlreadyRight matters more here than on
+// the forges whose behaviour could be read from source.
+//
+// Whether Origin applies a state change before a base change in one request is
+// unverified, so the common closed pull request — nothing reordered, somebody closed
+// the review — must not depend on it. With the base left out there is no order to get
+// wrong.
+func TestEnsureReopensWithoutSendingABaseThatIsAlreadyRight(t *testing.T) {
+	patched := false
+	o := newTestOrigin(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		switch r.Method {
+		case http.MethodGet:
+			body := `{"pullRequests": [{"number": "42", "state": "closed", "merged": false, "head": {"ref": "maiao.abc123", "sha": "x"}, "base": {"ref": "same-base", "sha": "y"}}]}`
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+		case http.MethodPatch:
+			patched = true
+			var reqBody map[string]interface{}
+			json.NewDecoder(r.Body).Decode(&reqBody)
+			assert.Equal(t, "open", reqBody["state"])
+			assert.NotContains(t, reqBody, "base")
+			body := `{"number": "42", "state": "open", "merged": false, "base": {"ref": "same-base", "sha": "y"}}`
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+			return nil, nil
+		}
+	}))
+
+	pr, created, err := o.Ensure(context.Background(), api.PullRequestOptions{
+		Head: "maiao.abc123",
+		Base: "same-base",
+	})
+	require.NoError(t, err)
+	assert.False(t, created)
+	assert.True(t, patched, "it still has to be reopened")
+	require.NotNil(t, pr)
+	assert.Equal(t, "42", pr.ID)
+}
+
+func TestEnsureReopensClosedPR(t *testing.T) {
+	createCalled := false
+	o := newTestOrigin(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		switch r.Method {
+		case http.MethodGet:
+			body := `{"pullRequests": [{"number": "42", "state": "closed", "merged": false, "head": {"ref": "maiao.abc123", "sha": "x"}, "base": {"ref": "old-base", "sha": "y"}}]}`
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+		case http.MethodPatch:
+			assert.Contains(t, r.URL.Path, "/pulls/42")
+			var reqBody map[string]interface{}
+			json.NewDecoder(r.Body).Decode(&reqBody)
+			assert.Equal(t, "open", reqBody["state"])
+			assert.Equal(t, "new-base", reqBody["base"])
+			body := `{"number": "42", "state": "open", "merged": false, "head": {"ref": "maiao.abc123", "sha": "x"}, "base": {"ref": "new-base", "sha": "z"}}`
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+		case http.MethodPost:
+			createCalled = true
+			t.Fatalf("Ensure must reopen the closed pull request, not create a new one")
+			return nil, nil
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+			return nil, nil
+		}
+	}))
+
+	pr, created, err := o.Ensure(context.Background(), api.PullRequestOptions{
+		Head: "maiao.abc123",
+		Base: "new-base",
+	})
+	require.NoError(t, err)
+	assert.False(t, created)
+	assert.False(t, createCalled)
+	require.NotNil(t, pr)
+	assert.Equal(t, "42", pr.ID)
+	assert.Equal(t, "new-base", pr.Base)
+}
+
+// TestEnsureCreatesNewPRWhenMerged pins the other half of the fix: Origin's docs say
+// "Merged is not writable; use MergePullRequest", so Ensure must not try to reopen a
+// merged pull request and must open a new one instead.
+func TestEnsureCreatesNewPRWhenMerged(t *testing.T) {
+	patchCalled := false
+	o := newTestOrigin(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		switch r.Method {
+		case http.MethodGet:
+			body := `{"pullRequests": [{"number": "42", "state": "closed", "merged": true, "head": {"ref": "maiao.abc123", "sha": "x"}, "base": {"ref": "old-base", "sha": "y"}}]}`
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+		case http.MethodPatch:
+			patchCalled = true
+			t.Fatalf("Ensure must not try to reopen a merged pull request")
+			return nil, nil
+		case http.MethodPost:
+			var reqBody map[string]interface{}
+			json.NewDecoder(r.Body).Decode(&reqBody)
+			assert.Equal(t, "new-base", reqBody["base"])
+			body := `{"number": "99", "head": {"ref": "maiao.abc123", "sha": "x"}, "base": {"ref": "new-base", "sha": "z"}}`
+			return &http.Response{StatusCode: http.StatusCreated, Body: io.NopCloser(strings.NewReader(body))}, nil
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+			return nil, nil
+		}
+	}))
+
+	pr, created, err := o.Ensure(context.Background(), api.PullRequestOptions{
+		Head: "maiao.abc123",
+		Base: "new-base",
+	})
+	require.NoError(t, err)
+	assert.True(t, created)
+	assert.False(t, patchCalled)
+	require.NotNil(t, pr)
+	assert.Equal(t, "99", pr.ID)
 }
 
 func TestEnsureReturnsErrorOnAPIFailure(t *testing.T) {

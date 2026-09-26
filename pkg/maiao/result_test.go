@@ -122,10 +122,10 @@ func withPullRequester(t *testing.T, prAPI api.PullRequester) {
 // TestPullRequestsCreatedBeforeAFailureAreReported is the reason a failure carries a
 // result at all.
 //
-// The branches are force-pushed before any pull request is opened, so by the time
-// one fails the earlier ones are live on the remote. Returning nothing described the
-// run as one that had done nothing, which is the opposite of the truth and the worst
-// thing to tell a caller deciding whether to retry.
+// The stack is sent from the bottom up, so by the time one pull request fails the
+// changes below it are pushed and reviewed. Returning nothing described the run as
+// one that had done nothing, which is the opposite of the truth and the worst thing
+// to tell a caller deciding whether to retry.
 func TestPullRequestsCreatedBeforeAFailureAreReported(t *testing.T) {
 	repo, base, head := stackToReview(t)
 	refused := errors.New("pull request refused")
