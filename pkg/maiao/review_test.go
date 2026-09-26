@@ -105,12 +105,24 @@ func (r *testRepository) Worktree() (*git.Worktree, error) {
 type testAPI struct {
 	UpdateFunc              func(context.Context, *api.PullRequest, api.PullRequestOptions) (*api.PullRequest, error)
 	EnsureFunc              func(context.Context, api.PullRequestOptions) (*api.PullRequest, bool, error)
+	FindFunc                func(context.Context, string) (*api.PullRequest, error)
 	LinkedTopicIssuesFunc   func(topic string) string
 	DefaultBranchFunc       func(context.Context) string
 	UpdateCalled            int
 	EnsureCalled            int
+	FindCalled              int
 	LinkedTopicIssuesCalled int
 	DefaultBranchCalled     int
+}
+
+// Find reports no pull request unless the test says otherwise, which is the shape
+// of a first review.
+func (a *testAPI) Find(ctx context.Context, head string) (*api.PullRequest, error) {
+	a.FindCalled++
+	if a.FindFunc != nil {
+		return a.FindFunc(ctx, head)
+	}
+	return nil, nil
 }
 
 // Update defines the interface to create or update a pull request to match options
@@ -554,8 +566,10 @@ type testStackManager struct {
 	available            func(context.Context) bool
 	createOrUpdateStack  func(context.Context, []int) (*api.Stack, error)
 	getStack             func(context.Context, int) (*api.Stack, error)
+	unstack              func(context.Context, string) error
 	createOrUpdateCalled int
 	lastPRNumbers        []int
+	unstacked            []string
 }
 
 func (m *testStackManager) Available(ctx context.Context) bool {
@@ -581,8 +595,12 @@ func (m *testStackManager) GetStack(ctx context.Context, prNumber int) (*api.Sta
 	return m.getStack(ctx, prNumber)
 }
 
-func (m *testStackManager) DeleteStack(ctx context.Context, stackID string) error {
-	return nil
+func (m *testStackManager) Unstack(ctx context.Context, stackID string) error {
+	m.unstacked = append(m.unstacked, stackID)
+	if m.unstack == nil {
+		return nil
+	}
+	return m.unstack(ctx, stackID)
 }
 
 type testAPIWithStack struct {

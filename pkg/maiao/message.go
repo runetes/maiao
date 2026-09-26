@@ -51,18 +51,13 @@ func relatedChanges(f api.BodyFormatter, parents, futures []*change) []string {
 }
 
 func prOptions(repo lgit.Repository, prAPI api.PullRequester, options ReviewOptions, change *change, parents, futures []*change) api.PullRequestOptions {
-	base := options.Branch
+	base := baseBranch(options, change)
 	title := change.message.Title
 	wip := options.WorkInProgress || strings.HasPrefix(title, "Draft: ") || strings.HasPrefix(title, "WIP: ")
 	title = strings.TrimPrefix(title, "Draft: ")
 	title = strings.TrimPrefix(title, "WIP: ")
-	if change.parent != nil {
-		if change.parent.branch != "" {
-			base = change.parent.branch
-		}
-		if change.parent.pr != nil {
-			title = fmt.Sprintf("[need #%s] %s", change.parent.pr.ID, title)
-		}
+	if change.parent != nil && change.parent.pr != nil {
+		title = fmt.Sprintf("[need #%s] %s", change.parent.pr.ID, title)
 	}
 
 	f := prAPI.BodyFormatter()

@@ -113,17 +113,33 @@ func (s *GitHubStackManager) addToStack(ctx context.Context, stack *Stack, prNum
 	return stackFromResponse(&resp), nil
 }
 
-func (s *GitHubStackManager) DeleteStack(ctx context.Context, stackID string) error {
-	url := fmt.Sprintf("repos/%s/%s/stacks/%s", s.owner, s.repository, stackID)
-	req, err := s.client.NewRequest(ctx, http.MethodDelete, url, nil, github.WithVersion(stackAPIVersion))
+// Unstack dissolves the stack.
+//
+// The documented call is a POST to the stack's unstack endpoint with no body; a
+// DELETE on the stack itself is not part of the published API.
+// See https://docs.github.com/en/rest/pulls/stacks.
+func (s *GitHubStackManager) Unstack(ctx context.Context, stackID string) error {
+	url := fmt.Sprintf("repos/%s/%s/stacks/%s/unstack", s.owner, s.repository, stackID)
+	req, err := s.client.NewRequest(ctx, http.MethodPost, url, nil, github.WithVersion(stackAPIVersion))
 	if err != nil {
-		return fmt.Errorf("creating delete stack request: %w", err)
+		return fmt.Errorf("creating unstack request: %w", err)
 	}
-	_, err = s.client.Do(req, nil)
+	// 200 answers that pull requests are still in the stack, because they could not
+	// be unstacked — queued for merge, most often. They keep their base branch
+	// locked, which the caller finds out when the base it asked for does not take.
+	var remaining stackResponse
+	resp, err := s.client.Do(req, &remaining)
 	if err != nil {
-		return fmt.Errorf("deleting stack: %w", err)
+		return fmt.Errorf("unstacking: %w", err)
 	}
-	log.ForContext(ctx).WithField("stackID", stackID).Debug("deleted GitHub native stack")
+	if resp != nil && resp.StatusCode == http.StatusOK && len(remaining.PullRequests) > 0 {
+		log.ForContext(ctx).
+			WithField("stackID", stackID).
+			WithField("remaining", len(remaining.PullRequests)).
+			Warn("some pull requests could not be unstacked and keep their base branch")
+		return nil
+	}
+	log.ForContext(ctx).WithField("stackID", stackID).Debug("dissolved GitHub native stack")
 	return nil
 }
 

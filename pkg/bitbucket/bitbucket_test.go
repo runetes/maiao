@@ -46,6 +46,32 @@ func TestEnsureReturnsExistingPR(t *testing.T) {
 	assert.Equal(t, "https://bitbucket.org/workspace/repo/pull-requests/42", pr.URL)
 }
 
+func TestFindReturnsNilWhenNoPRExists(t *testing.T) {
+	b := newTestBitbucket(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"values": []}`))}, nil
+	}))
+
+	pr, err := b.Find(context.Background(), "maiao.abc123")
+	require.NoError(t, err)
+	assert.Nil(t, pr)
+}
+
+func TestFindReturnsExistingPR(t *testing.T) {
+	b := newTestBitbucket(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		assert.Equal(t, `source.branch.name = "maiao.abc123"`, r.URL.Query().Get("q"), "Bitbucket filters the branch itself, which is what bounds an all-states listing")
+		assert.Equal(t, []string{"OPEN", "MERGED", "DECLINED", "SUPERSEDED"}, r.URL.Query()["state"])
+		body := `{"values": [{"id": 42, "links": {"html": {"href": "https://bitbucket.org/workspace/repo/pull-requests/42"}}, "state": "OPEN", "source": {"branch": {"name": "maiao.abc123"}}, "destination": {"branch": {"name": "main"}}}]}`
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+	}))
+
+	pr, err := b.Find(context.Background(), "maiao.abc123")
+	require.NoError(t, err)
+	require.NotNil(t, pr)
+	assert.Equal(t, "42", pr.ID)
+	assert.Equal(t, "https://bitbucket.org/workspace/repo/pull-requests/42", pr.URL)
+	assert.Equal(t, "main", pr.Base)
+}
+
 func TestEnsureCreatesNewPR(t *testing.T) {
 	b := newTestBitbucket(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
 		switch r.Method {
@@ -78,16 +104,143 @@ func TestEnsureCreatesNewPR(t *testing.T) {
 	assert.Equal(t, "https://bitbucket.org/workspace/repo/pull-requests/99", pr.URL)
 }
 
-func TestEnsureReturnsErrorWhenTooManyPRs(t *testing.T) {
+// TestFindPicksNewestWhenMultiplePRsMatch covers the wreckage a run that declined a
+// pull request and then opened a second one for the same change leaves behind:
+// listing every state can return more than one match for a head branch, and Find
+// must pick one rather than refuse.
+func TestFindPicksNewestWhenMultiplePRsMatch(t *testing.T) {
 	b := newTestBitbucket(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
-		body := `{"values": [{"id": 1, "links": {"html": {"href": "url1"}}}, {"id": 2, "links": {"html": {"href": "url2"}}}]}`
+		body := `{"values": [{"id": 1, "state": "OPEN", "links": {"html": {"href": "url1"}}}, {"id": 2, "state": "OPEN", "links": {"html": {"href": "url2"}}}]}`
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
 	}))
 
-	pr, _, err := b.Ensure(context.Background(), api.PullRequestOptions{Head: "maiao.abc123"})
-	assert.Nil(t, pr)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "too many matching pull requests")
+	pr, err := b.Find(context.Background(), "maiao.abc123")
+	require.NoError(t, err)
+	require.NotNil(t, pr)
+	assert.Equal(t, "2", pr.ID)
+}
+
+// TestFindPrefersTheOpenPullRequestOverANewerMergedOne is the loss picking the highest
+// ID caused: a branch carrying an open pull request with the review conversation on it,
+// plus a newer one an earlier run left merged on the same branch. Reported as Merged,
+// the change is skipped by the parking pass, its stale base ends up containing its own
+// source branch once the branches are pushed, and the forge closes the open pull request
+// as merged with no way back.
+func TestFindPrefersTheOpenPullRequestOverANewerMergedOne(t *testing.T) {
+	b := newTestBitbucket(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		body := `{"values": [
+			{"id": 10, "state": "OPEN", "links": {"html": {"href": "url10"}}, "destination": {"branch": {"name": "main"}}},
+			{"id": 14, "state": "MERGED", "links": {"html": {"href": "url14"}}, "destination": {"branch": {"name": "main"}}}
+		]}`
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+	}))
+
+	pr, err := b.Find(context.Background(), "maiao.abc123")
+	require.NoError(t, err)
+	require.NotNil(t, pr)
+	assert.Equal(t, "10", pr.ID)
+	assert.Equal(t, api.PullRequestOpen, pr.State)
+}
+
+// TestEnsureReusesAPullRequestWhoseStateItDoesNotRecognise is the duplicate that gating
+// on exactly PullRequestOpen produced. Bitbucket has grown its state enum before; one
+// value this does not know must not be read as a dead pull request, because a live one
+// is then neither parked nor reused and a second one is opened beside it. pkg/api
+// documents an unsaid state as the one every caller treats as open.
+func TestEnsureReusesAPullRequestWhoseStateItDoesNotRecognise(t *testing.T) {
+	b := newTestBitbucket(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		switch r.Method {
+		case http.MethodGet:
+			body := `{"values": [{"id": 42, "state": "A_STATE_BITBUCKET_GREW_LATER", "links": {"html": {"href": "url42"}}, "destination": {"branch": {"name": "main"}}}]}`
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+		default:
+			t.Fatalf("an unrecognised state must not open a second pull request: %s %s", r.Method, r.URL.String())
+			return nil, nil
+		}
+	}))
+
+	pr, created, err := b.Ensure(context.Background(), api.PullRequestOptions{Head: "maiao.abc123", Base: "main"})
+	require.NoError(t, err)
+	assert.False(t, created)
+	require.NotNil(t, pr)
+	assert.Equal(t, "42", pr.ID)
+	assert.Equal(t, api.PullRequestOpen, pr.State)
+}
+
+// TestEnsureCreatesNewPRWhenDeclined pins the fix's Bitbucket half: unlike GitHub,
+// Gitea, and GitLab, Bitbucket Cloud has no endpoint to reopen a declined pull
+// request at all (developer.atlassian.com/cloud/bitbucket/rest/api-group-pullrequests/;
+// BCLOUD-23807 is still an open feature request), so Ensure must not attempt one and
+// must always open a new pull request for a declined change.
+func TestEnsureCreatesNewPRWhenDeclined(t *testing.T) {
+	putCalled := false
+	b := newTestBitbucket(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		switch r.Method {
+		case http.MethodGet:
+			body := `{"values": [{"id": 42, "state": "DECLINED", "links": {"html": {"href": "url42"}}, "destination": {"branch": {"name": "old-base"}}}]}`
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+		case http.MethodPut:
+			putCalled = true
+			t.Fatalf("Ensure must not try to reopen a declined pull request: Bitbucket has no such endpoint")
+			return nil, nil
+		case http.MethodPost:
+			var reqBody map[string]interface{}
+			json.NewDecoder(r.Body).Decode(&reqBody)
+			dest := reqBody["destination"].(map[string]interface{})
+			branch := dest["branch"].(map[string]interface{})
+			assert.Equal(t, "new-base", branch["name"])
+			body := `{"id": 99, "links": {"html": {"href": "url99"}}}`
+			return &http.Response{StatusCode: http.StatusCreated, Body: io.NopCloser(strings.NewReader(body))}, nil
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+			return nil, nil
+		}
+	}))
+
+	pr, created, err := b.Ensure(context.Background(), api.PullRequestOptions{
+		Head: "maiao.abc123",
+		Base: "new-base",
+	})
+	require.NoError(t, err)
+	assert.True(t, created)
+	assert.False(t, putCalled)
+	require.NotNil(t, pr)
+	assert.Equal(t, "99", pr.ID)
+}
+
+// TestEnsureCreatesNewPRWhenMerged mirrors the declined case: a merged pull request
+// is dead history on Bitbucket too, so Ensure opens a new one rather than trying to
+// mutate it (the PUT it would otherwise use "Only open pull requests can be mutated",
+// per Bitbucket's own spec).
+func TestEnsureCreatesNewPRWhenMerged(t *testing.T) {
+	putCalled := false
+	b := newTestBitbucket(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		switch r.Method {
+		case http.MethodGet:
+			body := `{"values": [{"id": 42, "state": "MERGED", "links": {"html": {"href": "url42"}}, "destination": {"branch": {"name": "old-base"}}}]}`
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+		case http.MethodPut:
+			putCalled = true
+			t.Fatalf("Ensure must not try to reopen a merged pull request")
+			return nil, nil
+		case http.MethodPost:
+			body := `{"id": 100, "links": {"html": {"href": "url100"}}}`
+			return &http.Response{StatusCode: http.StatusCreated, Body: io.NopCloser(strings.NewReader(body))}, nil
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+			return nil, nil
+		}
+	}))
+
+	pr, created, err := b.Ensure(context.Background(), api.PullRequestOptions{
+		Head: "maiao.abc123",
+		Base: "new-base",
+	})
+	require.NoError(t, err)
+	assert.True(t, created)
+	assert.False(t, putCalled)
+	require.NotNil(t, pr)
+	assert.Equal(t, "100", pr.ID)
 }
 
 func TestEnsureReturnsErrorOnAPIFailure(t *testing.T) {
@@ -221,6 +374,10 @@ func TestListPRsUsesQueryFilter(t *testing.T) {
 	b := newTestBitbucket(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
 		assert.Contains(t, r.URL.RawQuery, "source.branch.name")
 		assert.Contains(t, r.URL.RawQuery, "maiao.abc123")
+		// state is a repeatable top-level query parameter, not a q clause: every
+		// state must be requested for Find to see a pull request an earlier run
+		// left declined or superseded.
+		assert.Equal(t, []string{"OPEN", "MERGED", "DECLINED", "SUPERSEDED"}, r.URL.Query()["state"])
 		body := `{"values": []}`
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
 	}))

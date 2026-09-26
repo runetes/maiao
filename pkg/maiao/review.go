@@ -231,6 +231,176 @@ func rebaseCommits(ctx context.Context, repo lgit.Repository, options ReviewOpti
 // rebase is a seam so that tests do not need to provoke a real conflict.
 var rebase = lgit.RebaseCommits
 
+// parkReorderedPullRequests moves every pull request whose base branch is about to
+// change onto the branch the stack is based on, and reports which ones it moved.
+//
+// It has to run before the branches are pushed. A provider marks a pull request
+// merged as soon as its head commits are contained in its base branch, and
+// reordering commits locally does exactly that: the branch a pull request still
+// names as its base is force-pushed to a tip that now contains that pull request's
+// own head. The review is closed as merged before anything gets to correct the
+// base, and no later run recovers it: a provider refuses to reopen a pull request it
+// has called merged, whether or not anything was merged. This pass is the only
+// defence, which is why it runs before the push rather than repairing afterwards.
+//
+// The branch the stack is based on is the one place with no such overlap: it is
+// behind every change in the stack, so it can contain no head in it. Pointing at
+// it costs a write and leaves the review showing the whole stack as its own diff,
+// so only the pull requests whose base actually moves are parked. The base each
+// one ends up on is set after the push, by the pass that writes the descriptions.
+func parkReorderedPullRequests(ctx context.Context, repo lgit.Repository, prAPI api.PullRequester, options ReviewOptions, changes []*change) ([]string, error) {
+	parked := []string{}
+	toPark := []*change{}
+	for _, change := range changes {
+		pr, err := prAPI.Find(ctx, change.branch)
+		if err != nil {
+			return parked, err
+		}
+		if pr == nil {
+			continue
+		}
+		// Only an open pull request is parked, and only an open one is carried into the
+		// rest of the review.
+		//
+		// A closed one cannot be closed again by the push, so it needs no protecting.
+		// What becomes of it is the provider's to decide, after the push: most reopen it
+		// on the base the change belongs behind, and Bitbucket cannot reopen anything at
+		// all, so there the change gets a new pull request.
+		//
+		// A merged one can be neither moved nor reopened on any provider, so the change
+		// needs a new pull request — and nothing else in the review would say where the
+		// conversation went.
+		switch pr.State {
+		case api.PullRequestMerged:
+			fmt.Fprintf(os.Stderr,
+				"%s was closed as merged by the provider and cannot be reopened. Opening a new pull request for this change; the review conversation stays on %s\n",
+				pr.URL, pr.URL)
+			continue
+		case api.PullRequestClosed:
+			continue
+		}
+		// Reused below rather than asking the provider for the same pull request a
+		// second time through Ensure.
+		change.pr = pr
+		// An empty base is a provider that did not report one, which is not the same
+		// as one that has not moved. Parking anyway costs a write; not parking costs
+		// a review nobody can reopen.
+		if pr.Base != "" && pr.Base == baseBranch(options, change) {
+			continue
+		}
+		toPark = append(toPark, change)
+	}
+	if len(toPark) == 0 {
+		return parked, nil
+	}
+	dissolveStacks(ctx, prAPI, options, toPark)
+
+	for _, change := range toPark {
+		i := indexOfChange(changes, change)
+		pr := change.pr
+		log.ForContext(ctx).
+			WithField("pullRequest", pr.ID).
+			WithField("from", pr.Base).
+			Debug("parking a reordered pull request on the base branch")
+		opts := prOptions(repo, prAPI, options, change, changes[:i], changes[i+1:])
+		opts.Base = options.Branch
+		// The pass after the push marks the review ready. Asking twice asks the
+		// provider to take a pull request out of draft that is already out of it.
+		opts.Ready = false
+		moved, err := prAPI.Update(ctx, pr, opts)
+		if err != nil {
+			return parked, err
+		}
+		// A provider can refuse to move a base and still answer the edit as a success:
+		// GitHub does exactly that for a pull request its native stacks own. Taking its
+		// word for it and pushing anyway is what closes the review, so the base it
+		// reports back is what counts. An empty one is a provider that reports no base
+		// at all, which says nothing either way.
+		if moved != nil && moved.Base != "" && moved.Base != options.Branch {
+			return parked, fmt.Errorf("%w: %s still targets %s", ErrBaseNotMoved, pr.URL, moved.Base)
+		}
+		parked = append(parked, pr.URL)
+	}
+	return parked, nil
+}
+
+// dissolveStacks takes the pull requests that must be parked out of any native
+// stack holding them, because a provider that owns a stack owns the base branches
+// in it and refuses to move them.
+//
+// GitHub offers no way to remove one pull request from a stack, and none to
+// reorder one, so dissolving the whole stack is the only way out — which is also
+// what its own documentation tells people to do before restructuring one. The
+// stack is registered again at the end of the review, in the order the commits are
+// now in, which is what the reorder was asking for in the first place.
+//
+// Every failure here is a warning rather than an error: the review can still go
+// ahead, and if the base really could not be moved the parking pass says so and
+// stops before anything is pushed.
+func dissolveStacks(ctx context.Context, prAPI api.PullRequester, options ReviewOptions, toPark []*change) {
+	if options.Stack == "false" {
+		return
+	}
+	stackMgr := prAPI.StackManager()
+	if stackMgr == nil {
+		return
+	}
+	dissolved := map[string]struct{}{}
+	for _, change := range toPark {
+		number, err := strconv.Atoi(change.pr.ID)
+		if err != nil {
+			continue
+		}
+		stack, err := stackMgr.GetStack(ctx, number)
+		if err != nil || stack == nil {
+			continue
+		}
+		if _, done := dissolved[stack.ID]; done {
+			continue
+		}
+		dissolved[stack.ID] = struct{}{}
+		log.ForContext(ctx).
+			WithField("stackID", stack.ID).
+			Info("dissolving the native stack so the reordered pull requests can be moved off their base")
+		if err := stackMgr.Unstack(ctx, stack.ID); err != nil {
+			log.ForContext(ctx).WithError(err).Warn("failed to dissolve the native stack")
+		}
+	}
+}
+
+// indexOfChange reports where a change sits in the stack, which is what decides
+// the parents and futures its description lists.
+func indexOfChange(changes []*change, target *change) int {
+	for i, c := range changes {
+		if c == target {
+			return i
+		}
+	}
+	return 0
+}
+
+// parkingNote adds to err the pull requests left parked on the base branch.
+//
+// Nothing else mentions them, and the user did not put the repository in that
+// state: those reviews show their whole stack as their own diff until a run gets
+// far enough to set their base again.
+func parkingNote(err error, parked []string, branch string) error {
+	if len(parked) == 0 {
+		return err
+	}
+	return fmt.Errorf("%w\n%s left targeting %s: run `git review` again to restore their base",
+		err, strings.Join(parked, ", "), branch)
+}
+
+// baseBranch is the branch a change's pull request targets: the one below it in
+// the stack, or the branch the whole stack is based on.
+func baseBranch(options ReviewOptions, c *change) string {
+	if c.parent != nil && c.parent.branch != "" {
+		return c.parent.branch
+	}
+	return options.Branch
+}
+
 func sendPrs(ctx context.Context, repo lgit.Repository, options ReviewOptions, base, head plumbing.Hash) (*Result, error) {
 
 	remote, err := repo.Remote(options.Remote)
@@ -243,12 +413,10 @@ func sendPrs(ctx context.Context, repo lgit.Repository, options ReviewOptions, b
 		return nil, err
 	}
 
-	refspecs := []config.RefSpec{}
 	for _, change := range changes {
 		if len(change.commits) == 0 {
 			return nil, errors.New("empty change")
 		}
-		refspecs = append(refspecs, config.RefSpec(change.head.Hash.String()+":refs/heads/"+change.branch))
 	}
 
 	if len(remote.Config().URLs) != 1 {
@@ -266,6 +434,27 @@ func sendPrs(ctx context.Context, repo lgit.Repository, options ReviewOptions, b
 	}
 	credGetter := credentials.CredentialGetterForProvider(string(providerType))
 
+	prAPI, err := pullRequesterFor(ctx, remote, options.RepoPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var parent *change
+	for _, change := range changes {
+		change.parent = parent
+		parent = change
+	}
+
+	parked, err := parkReorderedPullRequests(ctx, repo, prAPI, options, changes)
+	if err != nil {
+		// Nothing has been pushed, so this run has submitted nothing to report.
+		return nil, parkingNote(err, parked, options.Branch)
+	}
+
+	refspecs := []config.RefSpec{}
+	for _, change := range changes {
+		refspecs = append(refspecs, config.RefSpec(change.head.Hash.String()+":refs/heads/"+change.branch))
+	}
 	log.ForContext(ctx).WithField("refspec", refspecs).Debugf("pushing PR changes")
 	pushOpts := &git.PushOptions{
 		RemoteName: options.Remote,
@@ -275,17 +464,13 @@ func sendPrs(ctx context.Context, repo lgit.Repository, options ReviewOptions, b
 	}
 	err = retryAfterHostKeyFix(endpoint.Host, func() error { return repo.Push(pushOpts) })
 	if err != nil && err != git.NoErrAlreadyUpToDate {
-		return nil, err
+		return nil, parkingNote(err, parked, options.Branch)
 	}
 
-	prAPI, err := pullRequesterFor(ctx, remote, options.RepoPath)
-	if err != nil {
-		return nil, err
-	}
-
-	var parent *change
 	for i, change := range changes {
-		change.parent = parent
+		if change.pr != nil {
+			continue
+		}
 		opts := prOptions(repo, prAPI, options, change, changes[:i], changes[i+1:])
 		pr, created, err := prAPI.Ensure(ctx, opts)
 		if err != nil {
@@ -299,7 +484,6 @@ func sendPrs(ctx context.Context, repo lgit.Repository, options ReviewOptions, b
 		}
 		change.pr = pr
 		change.created = created
-		parent = change
 	}
 	for i, change := range changes {
 		opts := prOptions(repo, prAPI, options, change, changes[:i], changes[i+1:])

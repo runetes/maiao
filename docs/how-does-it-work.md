@@ -165,9 +165,16 @@ func extractChanges(ctx, repo, base, head) []*change {
 
 ### Phase 4: Push Branches
 
-**Code:** `pkg/maiao/review.go:231-257`
+**Code:** `pkg/maiao/review.go`, in `sendPrs`
+
+Any pull request whose base branch is about to change is first parked on the branch
+the stack is based on (see [Push order](#push-order)); then every branch goes up in
+one push.
 
 ```go
+// Park the reordered pull requests, before any branch moves
+parkReorderedPullRequests(ctx, repo, prAPI, options, changes)
+
 // Build refspecs for each change
 refspecs := []config.RefSpec{}
 for _, change := range changes {
@@ -193,25 +200,26 @@ maiao.I333   → C' (commit C's rebased SHA)
 
 ### Phase 5: Create/Update Pull Requests
 
-**Code:** `pkg/maiao/review.go:264-291`
+**Code:** `pkg/maiao/review.go`, in `sendPrs`
 
 ```go
-var parent *change
 for i, change := range changes {
-    change.parent = parent
-
+    if change.pr != nil {
+        continue // already found by the parking pass, before the push
+    }
     // Build PR/MR options with stacking
     opts := prOptions(repo, prAPI, options, change, changes[:i], changes[i+1:])
 
-    // Create or find existing PR/MR via the PullRequester interface
-    pr, created, err := prAPI.Ensure(ctx, opts)
-
-    change.pr = pr
-    parent = change  // Next PR/MR stacks on this one
+    // Create the PR/MR via the PullRequester interface
+    change.pr, change.created, err = prAPI.Ensure(ctx, opts)
 }
 ```
 
-The `PullRequester` interface abstracts the provider-specific API. Each provider (GitHub, GitLab, Gitea, Forgejo, Bitbucket) implements `Ensure()` and `Update()` using its own REST API.
+A second pass calls `Update()` on every pull request once they all exist. That is
+where each one gets its real base branch, and a description that can link the ones
+above and below it.
+
+The `PullRequester` interface abstracts the provider-specific API. Each provider (GitHub, GitLab, Gitea, Forgejo, Bitbucket) implements `Find()`, `Ensure()` and `Update()` using its own REST API. `Find()` looks a pull request up by head branch without creating one, so it can be called before the branch exists on the remote; it reports the base branch the provider currently has, which is what tells the parking pass which pull requests have moved.
 
 **PR/MR Structure Created:**
 ```
@@ -484,7 +492,7 @@ The `BodyFormatter` interface controls how PR body sections are rendered: HTML `
 
 ### Force Push Strategy
 
-**Code:** `pkg/maiao/review.go:249-257`
+**Code:** `pkg/maiao/review.go`, in `sendPrs`
 
 ```go
 err = repo.Push(&git.PushOptions{
@@ -499,6 +507,110 @@ err = repo.Push(&git.PushOptions{
 - `maiao.*` branches are ephemeral (recreated each run)
 - Change-IDs provide commit identity persistence
 - No one should work directly on `maiao.*` branches (they're PR branches)
+
+### Push order
+
+A pull request whose base branch is about to change is parked on the branch the
+stack is based on — usually `main` — before any branch is pushed. Its real base is
+set afterwards, by the pass that writes the descriptions.
+
+This matters because GitHub marks a pull request **merged** as soon as its head
+commits are contained in its base branch. Take a stack `main, A, B, C` and reorder
+it to `main, A, C, B`. `PR C` still names `maiao.B` as its base, and the push makes
+`maiao.B` the top of the new stack, so it now contains `C`. GitHub closes `PR C` as
+merged — and there is no coming back from that, which is why the parking happens
+before the push rather than being repaired after it (see [Pull requests that are
+already closed](#pull-requests-that-are-already-closed)).
+
+The branch the stack is based on is the one target with no such overlap. It is
+behind every change in the stack, so it can contain no head in it, whatever the
+push does.
+
+Parking costs a write and leaves the review showing the whole stack as its own
+diff, so only the pull requests whose base actually moves are parked — a review
+that reorders nothing asks the provider for nothing before pushing. If the push
+then fails, those pull requests stay parked until a run gets far enough to set
+their base again, and the error says which ones.
+
+### Pull requests that are already closed
+
+The lookup that finds a change's pull request asks for **every state**, not just the
+open ones, and reports which of three it found. What the review may then do differs
+per state, and the difference is not maiao's choice:
+
+| State | What the review does |
+|---|---|
+| open | carries on with it, parking it first if its base is about to change |
+| closed | reopens it, so the change keeps its pull request and the conversation on it — except on Bitbucket, which cannot |
+| merged | opens a new pull request, and says on stderr which conversation that leaves behind |
+
+A **merged** one is beyond recovery, whether or not anything was really merged:
+
+```
+PATCH /repos/OWNER/REPO/pulls/46 {"state":"open"}
+422 Validation Failed
+  state cannot be changed. The pull request cannot be reopened.
+```
+
+GitHub answers 422, Gitea 412, GitLab has no transition out of `merged`. That is why
+the parking pass runs before the push and stops the review rather than pushing when it
+cannot move a base: a pull request closed this way is gone for good along with its
+conversation, so a repository whose pull requests were closed before maiao learned to
+park them keeps those scars, and the changes concerned get new pull requests.
+
+A **closed** one is not parked — parking keeps the push from closing a pull request,
+and one already closed cannot be closed again — so it is reopened after the push
+instead, with its base set to where the change now belongs *first*. Reopening it while
+it still names the base an earlier run left behind would hand it straight to the
+merged-as-soon-as-contained rule.
+
+The base is only sent when it has actually moved. Most closed pull requests are on the
+right base already — nothing was reordered, somebody closed the review — and a
+needless base edit is refused outright inside one of GitHub's native stacks, which is
+how that was found. Where the base does have to move and the forge refuses, the pull
+request is **left closed** and the change gets a new one: that loses a conversation,
+where reopening it onto a base branch containing its head would lose the conversation
+*and* the pull request.
+
+**No two forges agree on how to reopen**, so each provider does it that forge's way
+rather than GitHub's:
+
+| Forge | Reopening a closed pull request |
+|---|---|
+| GitHub | base first, then reopen, in two edits — its stacks close a pull request as soon as its head is reachable from a stale base |
+| Gitea, Forgejo | one `PATCH`, state and base together: the handler applies state first, and `ChangeTargetBranch` refuses while the issue is closed ([`routers/api/v1/repo/pull.go`](https://github.com/go-gitea/gitea/blob/main/routers/api/v1/repo/pull.go), [`services/pull/pull.go`](https://github.com/go-gitea/gitea/blob/main/services/pull/pull.go)) |
+| GitLab | reopen alone, then the base — `general_fallback` drops `target_branch` outright while the merge request is still closed ([`update_service.rb`](https://github.com/gitlabhq/gitlabhq/blob/master/app/services/merge_requests/update_service.rb)). If the retarget is then refused it is closed again, rather than left open on a base the push is about to fill |
+| Bitbucket | **not possible.** Only open pull requests can be mutated and there is no reopen endpoint ([BCLOUD-23807](https://jira.atlassian.com/browse/BCLOUD-23807)), so a declined pull request always gets a new one |
+| Origin | one `PATCH`; the order it applies fields in could not be retrieved, so nothing depends on it |
+
+### Stacks GitHub owns
+
+A repository using [GitHub's native stacked pull
+requests](https://docs.github.com/en/rest/pulls/stacks) (public preview since July
+2026) is the one case parking cannot handle on its own: GitHub owns the base
+branches of a stack it manages and refuses to move them.
+
+GitHub offers **no way to take one pull request out of a stack**, and **no way to
+reorder one** — the API is list, get, create, `/add` (append to the top) and
+`/unstack`. So a stack whose order changed can only be rebuilt, which is what
+GitHub's own documentation tells people to do by hand. maiao does the same:
+`dissolveStacks` calls `/unstack` on the stacks holding the pull requests that must
+be parked, and `registerNativeStack` registers the stack again at the end of the
+review, in the order the commits are now in.
+
+`/unstack` is all or nothing, and leaves behind any pull request it cannot unstack
+— one queued for merge, for instance. Those keep their base locked, which the
+parking pass then catches.
+
+`maiao.useNativeStack=false` stops maiao touching stacks at all, dissolving
+included. A review that then needs to park a pull request GitHub has locked fails
+rather than pushing.
+
+**The last line of defence:** GitHub answers a refused base edit as a *success*,
+with the base left where it was. So the parking pass checks the base the provider
+reports back, and stops with `ErrBaseNotMoved` before pushing anything if it did
+not move. The review fails with every branch still as it was on the remote, which
+is recoverable; pushing would have closed a pull request that cannot be reopened.
 
 ## 🧩 Key Algorithms
 
