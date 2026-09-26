@@ -165,22 +165,23 @@ func extractChanges(ctx, repo, base, head) []*change {
 
 ### Phase 4: Push Branches
 
-**Code:** `pkg/maiao/review.go:231-257`
+**Code:** `pkg/maiao/review.go`, in `sendPrs`
+
+Branches are pushed one at a time, from the bottom of the stack upwards, and each
+one's pull request is settled on its new base before the branch above it is pushed
+(see [Push order](#push-order)).
 
 ```go
-// Build refspecs for each change
-refspecs := []config.RefSpec{}
-for _, change := range changes {
-    // Push commit SHA to its maiao.* branch
-    refspecs = append(refspecs,
-        config.RefSpec(change.head.Hash + ":refs/heads/" + change.branch))
+for i, change := range changes {
+    // Push this change's commit SHA to its maiao.* branch
+    repo.Push(&git.PushOptions{
+        RefSpecs: []config.RefSpec{
+            config.RefSpec(change.head.Hash + ":refs/heads/" + change.branch),
+        },
+        Force: true,
+    })
+    // ... then create or re-point this change's pull request (phase 5)
 }
-
-// Force-push all branches at once
-repo.Push(&git.PushOptions{
-    RefSpecs: refspecs,
-    Force:    true,
-})
 ```
 
 **Result on remote:**
@@ -193,11 +194,12 @@ maiao.I333   → C' (commit C's rebased SHA)
 
 ### Phase 5: Create/Update Pull Requests
 
-**Code:** `pkg/maiao/review.go:264-291`
+**Code:** `pkg/maiao/review.go`, in `sendPrs`
 
 ```go
 var parent *change
 for i, change := range changes {
+    // ... this change's branch has just been pushed (phase 4)
     change.parent = parent
 
     // Build PR/MR options with stacking
@@ -206,10 +208,19 @@ for i, change := range changes {
     // Create or find existing PR/MR via the PullRequester interface
     pr, created, err := prAPI.Ensure(ctx, opts)
 
+    if !created {
+        // Ensure leaves an existing pull request's base alone, so move it now,
+        // before the branch it still points at is pushed
+        prAPI.Update(ctx, pr, opts)
+    }
+
     change.pr = pr
     parent = change  // Next PR/MR stacks on this one
 }
 ```
+
+A second pass calls `Update()` on every pull request once they all exist, so each
+description can link the ones above and below it.
 
 The `PullRequester` interface abstracts the provider-specific API. Each provider (GitHub, GitLab, Gitea, Forgejo, Bitbucket) implements `Ensure()` and `Update()` using its own REST API.
 
@@ -484,12 +495,12 @@ The `BodyFormatter` interface controls how PR body sections are rendered: HTML `
 
 ### Force Push Strategy
 
-**Code:** `pkg/maiao/review.go:249-257`
+**Code:** `pkg/maiao/review.go`, in `sendPrs`
 
 ```go
 err = repo.Push(&git.PushOptions{
-    RefSpecs:   refspecs,        // All maiao.* branches
-    Force:      true,            // Force-push (safe: ephemeral branches)
+    RefSpecs:   []config.RefSpec{refspec}, // one maiao.* branch
+    Force:      true,                      // Force-push (safe: ephemeral branches)
     Auth:       gitAuth,
     RemoteName: options.Remote,
 })
@@ -499,6 +510,25 @@ err = repo.Push(&git.PushOptions{
 - `maiao.*` branches are ephemeral (recreated each run)
 - Change-IDs provide commit identity persistence
 - No one should work directly on `maiao.*` branches (they're PR branches)
+
+### Push order
+
+Branches are pushed from the bottom of the stack upwards, one at a time, and a
+pull request whose base has to move is re-pointed immediately after its own branch
+is pushed — before the branch above it.
+
+The order matters because GitHub marks a pull request **merged** as soon as its
+head commits are contained in its base branch. Reorder two commits locally and the
+branch a pull request still names as its base is force-pushed to a tip that now
+contains that pull request's own head. Pushing every branch first and re-pointing
+afterwards leaves exactly that window open, and GitHub closes reviews inside it
+that were never merged. The next run does not recover them either: an existing pull
+request is looked up among the **open** ones, so a closed one is invisible and a
+second pull request is opened for the same change.
+
+Pushing a branch only once every pull request below it already names its new base
+closes the window: whatever is pushed next is above them in the stack, so no base
+branch can grow to contain the head of the pull request pointing at it.
 
 ## 🧩 Key Algorithms
 
