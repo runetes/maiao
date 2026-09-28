@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.1](https://github.com/runetes/maiao/compare/maiao-v1.8.0...maiao-v1.8.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* keep every pull request open when a stack is reordered ([1f814c6](https://github.com/runetes/maiao/commit/1f814c6a032057137a66b08e2432ffdd73d8e5ba))
+
 ## [1.8.0](https://github.com/runetes/maiao/compare/maiao-v1.7.0...maiao-v1.8.0) (2026-09-23)
 
 
