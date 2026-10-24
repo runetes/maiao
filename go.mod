@@ -1,6 +1,6 @@
 module github.com/runetes/maiao
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/99designs/keyring v1.2.2
@@ -18,7 +18,7 @@ require (
 	github.com/tjamet/ssh-client-config v0.0.0-20250412002727-c4b59d5038a0
 	golang.org/x/crypto v0.37.0
 	golang.org/x/mod v0.26.0
-	golang.org/x/oauth2 v0.29.0
+	golang.org/x/oauth2 v0.37.0
 	golang.org/x/term v0.31.0
 )
 
