@@ -43,4 +43,22 @@ The two groups touch disjoint files, so they run in parallel.
 
 ## Log
 
-(Updated as milestones land.)
+2026-10-31: all nine PRs squash-merged, each on `build` and `build-darwin`
+= success on its head SHA (read by the merging agent). Order: 86, 76, 84, 85,
+82, 73, 83, 72, 78. `list_pull_requests state=open` returns none.
+
+- No code fix was needed in any PR. Every one only needed `update_pull_request_branch`
+  after the previous merge moved main.
+- Dependabot rebased #83 itself after the agent updated it, so the agent
+  discarded the first run and waited on the new head. Updating a dependabot
+  branch can race with dependabot's own rebase.
+- Not proven by PR CI: `release.yaml` (upload-artifact v7 with
+  download-artifact v8), `release-please.yml` (v5) and `update-gerrit-hook.yml`
+  (create-pull-request v8) do not run on PRs. Inputs were compared against each
+  action's `action.yml` at the new tag; the first real release is the test.
+- Local `go test` fails in this sandbox: pkg/ssh needs ssh-keygen/ssh-keyscan,
+  absent here. TestLicenses (root package) also failed locally on origin/main
+  (pkg.go.dev 429, and filepath-securejoin v0.4.1 reported as MPL-2.0); CI passed.
+  The MPL-2.0 finding is worth a separate look.
+- Final KPI read: the Go run for merge commit 2cc2181 on main was still
+  in_progress when this was written.
