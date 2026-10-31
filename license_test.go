@@ -17,6 +17,8 @@ var (
 		"BSD-3-Clause": struct{}{},
 		"BSD-2-Clause": struct{}{},
 		"ISC":          struct{}{},
+		// MPL-2.0 is file-level copyleft: unmodified use as a dependency (e.g. cyphar/filepath-securejoin) is compatible with MIT distribution
+		"MPL-2.0": struct{}{},
 	}
 
 	knownUndectedLicenses = map[string]string{
