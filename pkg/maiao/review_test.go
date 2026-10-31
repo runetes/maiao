@@ -509,7 +509,8 @@ func TestNeedReview(t *testing.T) {
 func newTestCommit(t *testing.T, storer storer.EncodedObjectStorer, sha string, parents ...string) *object.Commit {
 	t.Helper()
 	c := *&object.Commit{
-		Hash: plumbing.NewHash(sha),
+		Hash:     plumbing.NewHash(sha),
+		TreeHash: plumbing.NewHash("4b825dc642cb6eb9a060e54bf8d69288fbee4904"),
 	}
 	for _, parent := range parents {
 		c.ParentHashes = append(c.ParentHashes, plumbing.NewHash(parent))
@@ -548,7 +549,7 @@ func (t *testEncodedObject) SetSize(size int64) {
 	t.size = size
 }
 func (t *testEncodedObject) Reader() (io.ReadCloser, error) {
-	return ioutil.NopCloser(t.data), nil
+	return ioutil.NopCloser(bytes.NewReader(t.data.Bytes())), nil
 }
 func (t *testEncodedObject) Writer() (io.WriteCloser, error) {
 	return &nopWriteCloser{Writer: t.data}, nil
