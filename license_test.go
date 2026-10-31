@@ -17,6 +17,9 @@ var (
 		"BSD-3-Clause": struct{}{},
 		"BSD-2-Clause": struct{}{},
 		"ISC":          struct{}{},
+		// MPL-2.0 is a file-level copyleft: unmodified use as a dependency (e.g. cyphar/filepath-securejoin
+		// required by go-git) does not affect the licensing of maiao itself.
+		"MPL-2.0": struct{}{},
 	}
 
 	knownUndectedLicenses = map[string]string{
