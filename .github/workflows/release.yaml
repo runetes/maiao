@@ -17,7 +17,7 @@ jobs:
     needs: call-build
     steps:
     # Linux/Windows and Darwin are built by separate jobs, on separate runners.
-    - uses: actions/download-artifact@v4
+    - uses: actions/download-artifact@v8
       with:
         pattern: maiao-*
         merge-multiple: true
