@@ -12,7 +12,17 @@ TARGET_OS=${TARGET_OS:-"linux darwin windows"}
 SKIP_TESTS=${SKIP_TESTS:-}
 
 if [[ -z "${SKIP_TESTS}" ]]; then
-    go install github.com/axw/gocov/gocov@latest
+    # gocov@latest pins golang.org/x/tools v0.13.0, which no longer compiles
+    # with recent Go toolchains. Build it in a scratch module with x/tools
+    # upgraded.
+    gocov_dir=$(mktemp -d)
+    (
+        cd "${gocov_dir}"
+        go mod init gocovbuild
+        go get github.com/axw/gocov/gocov@latest golang.org/x/tools@latest
+        go build -o "$(go env GOPATH)/bin/gocov" github.com/axw/gocov/gocov
+    )
+    rm -rf "${gocov_dir}"
     go install github.com/AlekSi/gocov-xml@latest
     go install github.com/jstemmer/go-junit-report@latest
 
