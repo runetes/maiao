@@ -25,6 +25,7 @@ running.
 git review install --global                 # commit-msg hook in every repo, never asked again
 export GITHUB_TOKEN=...                     # or GITLAB_/GITEA_/FORGEJO_/BITBUCKET_/ORIGIN_TOKEN, or ~/.netrc
 git config --global maiao.provider gitea    # self-hosted hosts only; known hosts are detected
+git config --global maiao.work.github.com.host github.com   # remote names an SSH alias for a forge
 ```
 
 `--global` sets `init.templateDir`, so repositories you create or clone get the

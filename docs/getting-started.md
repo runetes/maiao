@@ -80,6 +80,38 @@ globally instead and every repository will pick it up:
 git config --global maiao.provider gitlab
 ```
 
+#### SSH host aliases and per-host settings
+
+A remote can name a `Host` alias from `~/.ssh/config` rather than the forge
+itself. This is the usual way to use more than one account on the same forge,
+since each alias picks its own key:
+
+```sshconfig
+Host work.github.com
+    HostName github.com
+    IdentityFile ~/.ssh/work
+    IdentitiesOnly yes
+```
+
+ssh resolves the alias, but the forge's API cannot be reached through it. Tell
+Maiao which host the alias stands for. Fetch and push still go through the
+alias, so ssh keeps using its key, while the API, credentials and links use the
+real host:
+
+```bash
+git config --global maiao.work.github.com.host github.com
+```
+
+The provider can be set for one host the same way, which is how you describe
+two self-hosted forges of different kinds:
+
+```bash
+git config --global maiao.git.company.example.provider gitea
+```
+
+A per-host provider takes precedence over the known hosts and over
+`maiao.provider`.
+
 ### Authentication
 
 Maiao tries credentials in this order: environment variable → `~/.netrc` → git credential helpers → system keychain.
@@ -369,6 +401,9 @@ git review install --global
 
 # Say what a self-hosted host is, for every repository at once
 git config --global maiao.provider gitlab
+
+# Say which forge an SSH alias stands for
+git config --global maiao.work.github.com.host github.com
 
 # Provide credentials (see Authentication above)
 export GITHUB_TOKEN=...
