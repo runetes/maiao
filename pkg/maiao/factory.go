@@ -22,6 +22,15 @@ import (
 // a provider to authenticate against.
 var pullRequesterFor = newPullRequester
 
+// forgeEndpoint returns the remote's endpoint as the forge's API must see it. The
+// host may be an SSH alias that only ssh can resolve, so the API clients get the
+// forge's own host while fetch and push keep the original endpoint.
+func forgeEndpoint(endpoint *transport.Endpoint, repoPath string) *transport.Endpoint {
+	forge := *endpoint
+	forge.Host = provider.ForgeHost(endpoint.Host, repoPath)
+	return &forge
+}
+
 func newPullRequester(ctx context.Context, remote *git.Remote, repoPath string) (api.PullRequester, error) {
 	var lastErr error
 	for _, u := range remote.Config().URLs {
@@ -40,9 +49,11 @@ func newPullRequester(ctx context.Context, remote *git.Remote, repoPath string) 
 			continue
 		}
 
+		apiEndpoint := forgeEndpoint(endpoint, repoPath)
+
 		switch providerType {
 		case provider.GitHub:
-			r, err := api.NewGitHubUpserter(ctx, endpoint)
+			r, err := api.NewGitHubUpserter(ctx, apiEndpoint)
 			if err != nil {
 				log.ForContext(ctx).WithError(err).Errorf("failed to instantiate github client")
 				lastErr = err
@@ -50,7 +61,7 @@ func newPullRequester(ctx context.Context, remote *git.Remote, repoPath string) 
 			}
 			return r, nil
 		case provider.GitLab:
-			r, err := gitlab.NewGitLabUpserter(ctx, endpoint)
+			r, err := gitlab.NewGitLabUpserter(ctx, apiEndpoint)
 			if err != nil {
 				log.ForContext(ctx).WithError(err).Errorf("failed to instantiate gitlab client")
 				lastErr = err
@@ -58,7 +69,7 @@ func newPullRequester(ctx context.Context, remote *git.Remote, repoPath string) 
 			}
 			return r, nil
 		case provider.Gitea:
-			r, err := gitea.NewGiteaUpserter(ctx, endpoint)
+			r, err := gitea.NewGiteaUpserter(ctx, apiEndpoint)
 			if err != nil {
 				log.ForContext(ctx).WithError(err).Errorf("failed to instantiate gitea client")
 				lastErr = err
@@ -66,7 +77,7 @@ func newPullRequester(ctx context.Context, remote *git.Remote, repoPath string) 
 			}
 			return r, nil
 		case provider.Forgejo:
-			r, err := forgejo.NewForgejoUpserter(ctx, endpoint)
+			r, err := forgejo.NewForgejoUpserter(ctx, apiEndpoint)
 			if err != nil {
 				log.ForContext(ctx).WithError(err).Errorf("failed to instantiate forgejo client")
 				lastErr = err
@@ -74,7 +85,7 @@ func newPullRequester(ctx context.Context, remote *git.Remote, repoPath string) 
 			}
 			return r, nil
 		case provider.Bitbucket:
-			r, err := bitbucket.NewBitbucketUpserter(ctx, endpoint)
+			r, err := bitbucket.NewBitbucketUpserter(ctx, apiEndpoint)
 			if err != nil {
 				log.ForContext(ctx).WithError(err).Errorf("failed to instantiate bitbucket client")
 				lastErr = err
@@ -82,7 +93,7 @@ func newPullRequester(ctx context.Context, remote *git.Remote, repoPath string) 
 			}
 			return r, nil
 		case provider.Origin:
-			r, err := origin.NewOriginUpserter(ctx, endpoint)
+			r, err := origin.NewOriginUpserter(ctx, apiEndpoint)
 			if err != nil {
 				log.ForContext(ctx).WithError(err).Errorf("failed to instantiate origin client")
 				lastErr = err

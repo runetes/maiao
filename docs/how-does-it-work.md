@@ -397,9 +397,15 @@ PR #3 base unchanged: maiao.I222 (rebased)
 
 Maiao detects the provider from your remote URL (`pkg/provider/detect.go`):
 
-1. **Known hosts** — `github.com`, `gitlab.com`, `codeberg.org`, `bitbucket.org`, `origin.cursor.com` are mapped automatically
-2. **Git config** — reads `git config maiao.provider` for self-hosted instances
-3. **Interactive prompt** — if unknown, prompts the user to select a provider and saves to git config
+1. **Per-host config** — reads `git config maiao.<host>.provider` for the host the remote names
+2. **Known hosts** — `github.com`, `gitlab.com`, `codeberg.org`, `bitbucket.org`, `origin.cursor.com` are mapped automatically, after following `maiao.<host>.host`
+3. **Git config** — reads `git config maiao.provider` for self-hosted instances
+4. **Interactive prompt** — if unknown, prompts the user to select a provider and saves to git config
+
+`maiao.<host>.host` names the forge behind an SSH alias such as `work.github.com`.
+The API clients, credential lookup and links use that host, while fetch and
+push keep the remote's own host so that ssh applies its configuration for the
+alias.
 
 ### Credential Chain
 
